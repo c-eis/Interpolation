@@ -2,4 +2,6 @@
 *.tif
 slurm*
 *.png*
-*~
+*py~
+*R~
+*sh~
