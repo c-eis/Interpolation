@@ -15,15 +15,15 @@ def print_time(Action):
     Action  : str
         ongoing action at printed time
     """
-	Time=strftime("%a, %d %b %Y %H:%M:%S", localtime())
-	print(Action+" at "+Time)
+    Time=strftime("%a, %d %b %Y %H:%M:%S", localtime())
+    print(Action+" at "+Time)
 
 	
 def choose_prior():
     """
     Choose prior field which gives the edges of the file to improve 
     interpolation at the edges of the field"""
-	print("prior:")
+    print("prior:")
 	
 	
 def read(FileName, GetProj=False):
@@ -44,14 +44,14 @@ def read(FileName, GetProj=False):
     Proj   :  str
         geographic projection
     """
-	print("read file "+filename)
-	try:
-		DataSet = gdal.Open(FileName, gdal.GA_ReadOnly)
-	except IOError as (errno, strerror):
-		print "I/O error({0}): {1}".format(errno, strerror)
-	assert DataSet.RasterCount == 1, "More than one band in GeoTiff"
-	Band = DataSet.GetRasterBand(1)
-	Array = Band.ReadAsArray()
+    print("read file "+filename)
+    try:
+        DataSet = gdal.Open(FileName, gdal.GA_ReadOnly)
+    except IOError as (errno, strerror):
+        print "I/O error({0}): {1}".format(errno, strerror)
+    assert DataSet.RasterCount == 1, "More than one band in GeoTiff"
+    Band = DataSet.GetRasterBand(1)
+    Array = Band.ReadAsArray()
         if GetProj=True:
             GeoT = DataSet.GetGeoTransform()
             Proj = osr.SpatialReference()
@@ -76,7 +76,7 @@ def write(Array, FileName, GeoT, Proj):
     Proj      :  str
         geographic projection
     """
-	print("write file "+FileName)
+    print("write file "+FileName)
     Driver = gdal.GetDriverByName('GTiff')
     M = Array.shape[0]
     N = Array.shape[1]
@@ -157,18 +157,18 @@ def extent(FileName):
     
     
 def main():
-	print_time("Computation started")
-	InFile = sys.argv[1]
-	OutFile = sys.argv[2]
+    print_time("Computation started")
+    InFile = sys.argv[1]
+    OutFile = sys.argv[2]
     DirName=OutFile.rpartition("/")[0]
-	PriorFile = choose_prior()
-	Input, InputGeoT, InputProj = read(Infile, Proj=True)
-	Prior = read(PriorFile)
-	print_time("Add edges")
-	Input = add_edge(Input, Prior)
-	print_time("Vectorization")
-	Isnan = np.isnan(Input)
-	IsnanFile = DirName+"/isnan.tif"
+    PriorFile = choose_prior()
+    Input, InputGeoT, InputProj = read(Infile, Proj=True)
+    Prior = read(PriorFile)
+    print_time("Add edges")
+    Input = add_edge(Input, Prior)
+    print_time("Vectorization")
+    Isnan = np.isnan(Input)
+    IsnanFile = DirName+"/isnan.tif"
     write(Isnan,IsnanFile)
     VecFile = DirName+"/vectorized"
     os.system("mkdir "+VecFile)
