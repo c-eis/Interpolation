@@ -4,6 +4,8 @@ from time import localtime, strftime
 from osgeo import gdal
 from osgeo import osr
 import numpy as np
+import osr
+import gdal
 
 
 def print_time(Action):
@@ -18,15 +20,44 @@ def print_time(Action):
     Time=strftime("%a, %d %b %Y %H:%M:%S", localtime())
     print(Action+" at "+Time)
 
-	
-def choose_prior():
+    
+def choose_prior(FileName, EPSG):
     """
     Choose prior field which gives the edges of the file to improve 
-    interpolation at the edges of the field"""
-    print("prior:")
-	
-	
-def read(FileName, GetProj=False):
+    interpolation at the edges of the field
+    
+    Parameter
+    ---------
+    
+    FileName  : str
+        Path of the input file
+    Proj      : str
+        geographic projection of the input file
+        
+    Returns
+    -------
+    
+    str
+        path of the prior field
+    """
+    if "vx" in FileName:
+        PriorNorth = "C:\\Users\\Tine\\Documents\\AWI\\github\\Interpolation\\prior\\prior_vx.tif"
+        PriorSouth = "C:\\Users\\Tine\\Documents\\AWI\\github\\Interpolation\\prior\\rignot_vx.tif"
+    else:
+        PriorNorth = "C:\\Users\\Tine\\Documents\\AWI\\github\\Interpolation\\prior\\prior_vy.tif"
+        PriorSouth = "C:\\Users\\Tine\\Documents\\AWI\\github\\Interpolation\\prior\\rignot_vy.tif"
+    DataSet = gdal.Open(PriorNorth, gdal.GA_ReadOnly)
+    SRS = osr.SpatialReference()
+    SRS.ImportFromWkt(DataSet.GetProjectionRef())
+    EPSGPrior=SRS.GetAuthorityCode(None)
+    if EPSGPrior == EPSG:
+        PriorFile = PriorNorth
+    else:
+        PriorFile = PriorSouth
+    return PriorFile
+    
+    
+def read(FileName, GetGeoT=False, GetWKT=False, GetEPSG=False, GetProj4=False):
     """
     Read GeoTiff and save the information of the first band as a numpy array.
     
@@ -44,24 +75,32 @@ def read(FileName, GetProj=False):
     Proj   :  str
         geographic projection
     """
-    print("read file "+filename)
-    try:
-        DataSet = gdal.Open(FileName, gdal.GA_ReadOnly)
-    except IOError as (errno, strerror):
-        print "I/O error({0}): {1}".format(errno, strerror)
+    print("read file "+FileName)
+    #try:
+    DataSet = gdal.Open(FileName, gdal.GA_ReadOnly)
+    #except IOError as (errno, strerror):
+    #    print "I/O error({0}): {1}".format(errno, strerror)
     assert DataSet.RasterCount == 1, "More than one band in GeoTiff"
     Band = DataSet.GetRasterBand(1)
     Array = Band.ReadAsArray()
-        if GetProj=True:
-            GeoT = DataSet.GetGeoTransform()
-            Proj = osr.SpatialReference()
-            Proj.ImportFromWkt(DataSet.GetProjectionRef())    
-            return Array, GeoT, Proj
-        else:
-            return Array
+    Output = [Array, None, None, None, None]
+    if GetGeoT == True:
+        GeoT = DataSet.GetGeoTransform()
+        Output[1] = GeoT
+    if GetWKT == True or GetEPSG == True or GetProj4 == True:
+        SRS = osr.SpatialReference()
+        SRS.ImportFromWkt(DataSet.GetProjectionRef())
+        Output[2] = SRS
+    if GetEPSG == True or GetProj4 == True:
+        EPSG=SRS.GetAuthorityCode(None)
+        Output[3] = EPSG
+    if GetProj4 == True:
+        Proj4 = SRS.ExportToProj4()
+        Output[4] = Proj4
+    return Output
 
 
-def write(Array, FileName, GeoT, Proj):
+def write(Array, FileName, GeoT, WKT):
     """
     Write numpy array data as GeoTiff.
     
@@ -73,7 +112,7 @@ def write(Array, FileName, GeoT, Proj):
         path of the output file (GeoTiff)
     GeoT      :  str
         geographic transformation
-    Proj      :  str
+    WKT      :  str
         geographic projection
     """
     print("write file "+FileName)
@@ -83,10 +122,10 @@ def write(Array, FileName, GeoT, Proj):
     Type = gdal.GDT_Float32
     DataSet = Driver.Create(FileName, M, N, 1, Type) # the '1' is for band 1.
     DataSet.SetGeoTransform(GeoT)
-    DataSet.SetProjection(Proj.ExportToWkt())
+    DataSet.SetProjection(WKT.ExportToWkt())
     DataSet.GetRasterBand(1).WriteArray(Data)
         
-	
+    
 def add_edge(Array, Edge):
     """
     Add edges from a prior field to an array
@@ -111,7 +150,19 @@ def add_edge(Array, Edge):
     
     
       
-def classification(OldFileName,NewFileName):
+def classification(OldFileName, NewFileName):
+    """
+    Classification of polygons in OldFileName which represent the gaps which 
+    should be filled. All polygons in one class get the same kriging radius.
+    The radius is saved as an attribute in the output file NewFileName.
+    
+    Parameter
+    ---------
+    OldFileName  :  str
+        Path of the input .shp file
+    NewFileName  : str
+        Path of the output .shp file
+    """
     with fiona.open(OldFileName, 'r') as Gaps:
         NumPolygons = len(list(Gaps))
         Properties = np.empty([NumPolygons, 3]) # Characteristics of gaps
@@ -146,6 +197,21 @@ def classification(OldFileName,NewFileName):
 
 
 def extent(FileName):
+    """
+    Computation of the extent of a raster file (GeoTiff).
+    
+    Parameter
+    ---------
+    
+    FileName  : str
+        Path of the inout file
+        
+    Returns
+    -------
+    
+    list
+        list of the coordinates of the corners of the GeoTiff
+    """
     Data = gdal.Open(FileName, GA_ReadOnly)
     GeoT = Data.GetGeoTransform()
     MinX = GeoT[0]
@@ -155,34 +221,35 @@ def extent(FileName):
     Data = None
     return [MinX, MinY, MaxX, MaxY]
     
-    
+ 
 def main():
     print_time("Computation started")
     InFile = sys.argv[1]
     OutFile = sys.argv[2]
     DirName=OutFile.rpartition("/")[0]
-    PriorFile = choose_prior()
-    Input, InputGeoT, InputProj = read(Infile, Proj=True)
+    Input, InputGeoT, InputWKT, InputEPSG, InputProj4 = read(InFile, GetGeoT=True, GetWKT=True, GetEPSG=True, GetProj4=True)
+    PriorFile = choose_prior(InFile, InputEPSG)
+    print(PriorFile)
     Prior = read(PriorFile)
-    print_time("Add edges")
-    Input = add_edge(Input, Prior)
-    print_time("Vectorization")
-    Isnan = np.isnan(Input)
-    IsnanFile = DirName+"/isnan.tif"
-    write(Isnan,IsnanFile)
-    VecFile = DirName+"/vectorized"
-    os.system("mkdir "+VecFile)
-    os.system("gdal_polygonize.py -q "+IsnanFile+" -f 'ESRI Shapefile'"+VecFile)
-    print_time("Computation of kriging radii")
-    RadiusSHPFile = DirName+"/kriging_radius"
-    RadiusFile = DirName+"/kriging_radius.tif"
-    classification(VecFile, RadiusSHPFile)
-    Extent = extent(InFile)
-    Extent = str(Extent[0], Extent[1], Extent[2], Extent[3])
-    os.system("gdal_rasterize -q -a krig -l "+RadiusSHPFile+" -a_srs "+InputProj+" -tr 250 250 -te "+Extent+" "+RadiusSHPFile+"/kriging_radius.shp "+RadiusFile)
-    print_time("Start Kriging")
-    #os.system("./kriging.R $surface_gaps_filled.nc  $kriging_radius_inside.nc $kriging_values_inside.nc $interim_inside.nc $kriging_variance_inside.nc $dir")
+    # print_time("Add edges")
+    # Input = add_edge(Input, Prior)
+    # print_time("Vectorization")
+    # Isnan = np.isnan(Input)
+    # IsnanFile = DirName+"/isnan.tif"
+    # write(Isnan,IsnanFile)
+    # VecFile = DirName+"/vectorized"
+    # os.system("mkdir "+VecFile)
+    # os.system("gdal_polygonize.py -q "+IsnanFile+" -f 'ESRI Shapefile'"+VecFile)
+    # print_time("Computation of kriging radii")
+    # RadiusSHPFile = DirName+"/kriging_radius"
+    # RadiusFile = DirName+"/kriging_radius.tif"
+    # classification(VecFile, RadiusSHPFile)
+    # Extent = extent(InFile)
+    # Extent = str(Extent[0], Extent[1], Extent[2], Extent[3])
+    # os.system("gdal_rasterize -q -a krig -l "+RadiusSHPFile+" -a_srs "+InputProj4+" -tr 250 250 -te "+Extent+" "+RadiusSHPFile+"/kriging_radius.shp "+RadiusFile)
+    # print_time("Start Kriging")
+    # os.system("./kriging.R "+InFile+" "+RadiusFile+" "+OutFile+" "+DirName)
+
     
-	
 if __name__ == "__main__":
     main()

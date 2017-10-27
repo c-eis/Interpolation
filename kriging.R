@@ -1,16 +1,13 @@
 #!/usr/bin/env Rscript
 rm(list = ls())
 library("foreach",lib.loc="/home-nfs/ollie/cluettig/R/x86_64-redhat-linux-gnu-library/3.3")
-#library(foreach)
 library("doParallel",lib.loc="/home-nfs/ollie/cluettig/R/x86_64-pc-linux-gnu-library/3.3")
 library("gstat",lib.loc="/home-nfs/ollie/cluettig/R/x86_64-pc-linux-gnu-library/3.3")
 library("sp",lib.loc="/home-nfs/ollie/cluettig/R/x86_64-pc-linux-gnu-library/3.3")
 library("nlme",lib.loc="/home-nfs/ollie/cluettig/R/x86_64-pc-linux-gnu-library/3.3")
-#library("RNetCDF",lib.loc="/home-nfs/ollie/cluettig/R/x86_64-pc-linux-gnu-library/3.3")
 library("ncdf4",lib.loc="/home-nfs/ollie/cluettig/R/x86_64-pc-linux-gnu-library/3.3")
 library("ncdf4.helpers",lib.loc="/home-nfs/ollie/cluettig/R/x86_64-pc-linux-gnu-library/3.3")
 library("lattice",lib.loc="/home-nfs/ollie/cluettig/R/x86_64-pc-linux-gnu-library/3.3")
-#library("ggplot2",lib.loc="/home-nfs/ollie/cluettig/R/x86_64-pc-linux-gnu-library/3.3")
 library("raster",lib.loc="/home-nfs/ollie/cluettig/R/x86_64-pc-linux-gnu-library/3.3")
 library("plyr",lib.loc="/home-nfs/ollie/cluettig/R/x86_64-pc-linux-gnu-library/3.3")
 source("fitmodel.R")
@@ -20,53 +17,37 @@ args <- commandArgs(TRUE)
 fname <- args[1]
 fname2 <- args[2]
 fnewname <- args[3]
-fnewname2 <- args[4]
-fvarname <- args[5]
-dir <- args[6]
+dir <- args[4]
 #setwd("~/Documents/Daten/Interpolation/test4_Kombination")
-#source("fitmodel.R")
-#fname <- '/Users/cluettig/Documents/Daten/Interpolation/test4_Kombination/test/surface_gaps_filled.nc'
-#fname2 <- '/Users/cluettig/Documents/Daten/Interpolation/test4_Kombination/test/kriging_radius_inside.nc'
-#fnewname <- '/Users/cluettig/Documents/Daten/Interpolation/test4_Kombination/test/kriging_values_inside.nc'
-#fnewname2 <- '/Users/cluettig/Documents/Daten/Interpolation/test4_Kombination/test/interim_inside.nc'
-#fvarname <- '/Users/cluettig/Documents/Daten/Interpolation/test4_Kombination/test/kriging_variance_inside.nc'
-#dir <- '/Users/cluettig/Documents/Daten/Interpolation/test4_Kombination/test/'
 ######### READ ###################################################################################################
 nc_data <- nc_open(fname)       # input
-#proj4string <- nc.get.proj4.string(nc_data,'z')
 z_data <- ncvar_get(nc_data,varid = "z")
 x_coor <- ncvar_get(nc_data,varid = "x")
 y_coor <- ncvar_get(nc_data,varid = "y")
 nc_close(nc_data)
 
 nc_data <- nc_open(fname2)      # contains polygon diameters
-print(nc_data)
 krig_data <- ncvar_get(nc_data,varid = "Band1")
 nc_close(nc_data)
-print("ok")
 ######### FORMAT DATA ############################################################################################
 # raster to vectors:
 z_a <- as.vector(z_data)
 y_a <- rep(x_coor,times = length(y_coor))
 x_a <- rep(y_coor,each = length(x_coor))
 krig_a <- as.vector(krig_data)
-print(length(z_a))
 
-# Values in NA positions
-z_a[z_a > 1e+30] <- NA
+# NA positions
+z_a[z_a > 1e+30] <- NA    # convert to NaN
 krig_nan <- krig_a[krig_a != 0 & is.na(z_a)]
 x_nan <- x_a[krig_a != 0 & is.na(z_a)]
 y_nan <- y_a[krig_a != 0 & is.na(z_a)]
 z_nan <- z_a[krig_a != 0 & is.na(z_a)]
 
-d_nan <- data.frame(x_nan,y_nan)
-coordinates(d_nan) = ~x_nan+y_nan
 
 # Values in given positions:
 x_notnan <- x_a[!is.na(z_a)]
 y_notnan <- y_a[!is.na(z_a)]
 z_notnan <- z_a[!is.na(z_a)]
-d_notnan <- data.frame(x_notnan,y_notnan,z_notnan)
 
 # Possibility to take only a subsample for kriging:
 sub1 = length(z_notnan)/1 # number of data points in subsample
@@ -84,51 +65,36 @@ if (length(z_notnan) > sub1)
   z <- z_notnan
 }
 
-d <- data.frame(x,y,z)
-coordinates(d) = ~x+y
-
 # Possibility to take only outer points for kriging:
 outer_p <- 1
 print("reaches outer")
 if (outer_p == 1)
 {
-  print("if 1")
   z_outer <- z_data
   nan_mat <- is.na(z_data)
   for (i in 1:length(x_coor))
   {
-      print("for 1")
       for (j in 1:length(y_coor))
       {
-        print("for 2")
 	if (nan_mat[i,j]==0)
 	{
-	  print("if 2")
 	  if (i-1 >= 1 && i+1 <= length(x_coor) && j-1 >= 1 && j+1 <= length(y_coor))
 	  {
-		print("if 3")
 		n_nan_neighbours <- nan_mat[i-1,j] + nan_mat[i+1,j] + nan_mat[i,j-1] + nan_mat[i,j+1]
 		if (n_nan_neighbours == 0)
 		{
-			print("if 4")
 			z_outer[i,j] <- NA
-			print("do nan")
 		}
 	  }
 	}
       }
   }  
-  print("after fors")
   z_o <- as.vector(z_outer)
   y_o <- rep(x_coor,times = length(y_coor))
   x_o <- rep(y_coor,each = length(x_coor))
   x <- x_o[!is.na(z_o)]
   y <- y_o[!is.na(z_o)]
   z <- z_o[!is.na(z_o)]
-  print("outer points")
-  print(length(z))
-  print(length(z_notnan))
-  print(length(z_nan))
 } else
 {
   x <- x_notnan
@@ -150,9 +116,10 @@ if (length(z) > sub2)
   y_v <- y
   z_v <- z
 }
+rm(x_o,y_o,z_o,z_outer,nan_mat,z_data,s,IX)
 
 ################ TREND REMOVAL ###########################################################################################
-print("rend removal")
+print("trend removal")
 model <- fitmodel(x_v,y_v,z_v, dir)
 model$coefficients[is.na(model$coefficients)] <- 0
 if (length(model$coefficients) == 16)
@@ -214,6 +181,7 @@ fit <- fit.variogram(v,vm)
 png(paste(dir,"variogram_fit.png"))
 plot(v, fit)
 dev.off()
+rm(x_v,y_v,z_v,d_v,v,v2,g,v,v2,vm)
 
 t3 <- Sys.time()
 
@@ -224,23 +192,25 @@ y_notnan <- y_a[krig_a == 0 | (krig_a != 0 & !is.na(z_a))]
 z_notnan <- z_a[krig_a == 0 | (krig_a != 0 & !is.na(z_a))]
 d_notnan <- data.frame(x_notnan,y_notnan,z_notnan)
 d_notnan <- rename(d_notnan, c("x_notnan" = "x", "y_notnan" = "y","z_notnan" = "z"))
-
+rm(x_notnan,y_notnan,z_notnan,x_a,y_a,z_a)
 kriging <- function(i){
+    print("kriging run")
+    print(i)
     if (unique(krig_nan)[i] > 25000) {max_kriging_points = 3000}else{max_kriging_points = 500}
     x_nan_i <- x_nan[krig_nan == unique(krig_nan)[i]]
     y_nan_i <- y_nan[krig_nan == unique(krig_nan)[i]]
     d_n <- data.frame(x_nan_i,y_nan_i)
     coordinates(d_n) = ~x_nan_i+y_nan_i
     cat(i, 'of', n_iterations, " at time", as.character(Sys.time()), "for",length(x_nan_i),"points and with maximal", max_kriging_points, "kriging points \n")
-    zk <- krige(formula = z~1, locations = d, newdata = d_n, model = fit, maxdist = unique(krig_nan)[i], nmax=300)
+    zk <- krige(formula = z~1, locations = d, newdata = d_n, model = fit, maxdist = 5*unique(krig_nan)[i], nmax=1000)
     #maxdist = unique(krig_nan)[i]
     zw <- zk$var1.pred
-    print(zw)
     xw <- x_nan_i
     yw <- y_nan_i
     dw <- data.frame(xw,yw,zw)
     dw <- rename(dw, c("xw"="x", "yw"="y", "zw"="z"))
 }
+print("number of cores:")
 n_cores <- detectCores()
 print(n_cores)
 cl <- makeCluster(n_cores)
@@ -252,12 +222,15 @@ if (length(krig_nan[krig_nan==j])>max_length_gap)
    {
    part=max_length_gap/length(krig_nan[krig_nan==j])
    for (k in 1:floor(part))
-       {
+       {  
 		krig_nan[krig_nan==j][(k-1)*max_length_gap+1:k*max_length_gap]=krig_nan[(k-1)*max_length_gap+1:k*max_length_gap]+k*0.01
        }
    }
 } 
+
 n_iterations <- length(unique(krig_nan))
+print("number of iterarions:")
+print(n_iterations)
 kriging_results <- foreach(test_i = 1:n_iterations,
                            .combine = list,
                             .multicombine = TRUE,
@@ -307,17 +280,3 @@ z_new <- as.matrix(total[c("z")], nrow = length(x_coor), ncol = length(y_coor))
 nc_data <- nc_open(fnewname, write = TRUE)
 z_data <- ncvar_put(nc_data, varid = "z",vals = z_new)
 nc_close(nc_data)
-
-# kriging variance:
-# z_notnan <- array(NA,c(length(z_notnan),1))
-# d_notnan <- data.frame(x_notnan,y_notnan,z_notnan)
-# d_notnan <- rename(d_notnan, c("x_notnan" = "x", "y_notnan" = "y", "z_notnan" = "z"))
-# d_z_n <- data.frame(x_n,y_n,var_n)
-# d_z_n <- rename(d_z_n, c("x_n" = "x", "y_n" = "y", "var_n" = "z"))
-# d_z_n <- d_z_n[c("x", "y","z")]
-# total <- rbind(d_z_n,d_notnan)
-# total <- total[with(total, order(x, y)),]
-# z_var <- as.matrix(total[c("z")], nrow = length(x_coor), ncol = length(y_coor))
-# nc_data <- nc_open(fvarname, write = TRUE)
-# z_data <- ncvar_put(nc_data, varid = "z", vals = z_var)
-# nc_close(nc_data)
