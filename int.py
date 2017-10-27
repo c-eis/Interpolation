@@ -1,4 +1,3 @@
-import os
 import sys
 from time import localtime, strftime
 from osgeo import gdal
@@ -6,7 +5,7 @@ from osgeo import osr
 import numpy as np
 import osr
 import gdal
-
+import os
 
 def print_time(Action):
     """
@@ -83,6 +82,7 @@ def read(FileName, GetGeoT=False, GetWKT=False, GetEPSG=False, GetProj4=False):
     assert DataSet.RasterCount == 1, "More than one band in GeoTiff"
     Band = DataSet.GetRasterBand(1)
     Array = Band.ReadAsArray()
+    print(Array.shape[0] - 1, Array.shape[1] - 1)
     Output = [Array, None, None, None, None]
     if GetGeoT == True:
         GeoT = DataSet.GetGeoTransform()
@@ -117,13 +117,15 @@ def write(Array, FileName, GeoT, WKT):
     """
     print("write file "+FileName)
     Driver = gdal.GetDriverByName('GTiff')
-    M = Array.shape[0]
-    N = Array.shape[1]
-    Type = gdal.GDT_Float32
+    N = Array.shape[0]-1
+    M = Array.shape[1]-1
+    Array = Array.astype(int)
+    print(Array.dtype)
+    Type = gdal.GDT_Int32
     DataSet = Driver.Create(FileName, M, N, 1, Type) # the '1' is for band 1.
     DataSet.SetGeoTransform(GeoT)
     DataSet.SetProjection(WKT.ExportToWkt())
-    DataSet.GetRasterBand(1).WriteArray(Data)
+    DataSet.GetRasterBand(1).WriteArray(Array)
         
     
 def add_edge(Array, Edge):
@@ -142,6 +144,7 @@ def add_edge(Array, Edge):
     """
     N = Array.shape[0] - 1
     M = Array.shape[1] - 1
+    print(M,N)
     Array[0, :] = Edge[0, :]
     Array[:, 0] = Edge[:, 0]
     Array[N, :] = Edge[N, :]
@@ -212,12 +215,12 @@ def extent(FileName):
     list
         list of the coordinates of the corners of the GeoTiff
     """
-    Data = gdal.Open(FileName, GA_ReadOnly)
+    Data = gdal.Open(FileName, gdal.GA_ReadOnly)
     GeoT = Data.GetGeoTransform()
     MinX = GeoT[0]
     MaxY = GeoT[3]
-    MaxX = MinX + GeoT[1] * data.RasterXSize
-    MinY = MaxY + GeoT[5] * data.RasterYSize
+    MaxX = MinX + GeoT[1] * Data.RasterXSize
+    MinY = MaxY + GeoT[5] * Data.RasterYSize
     Data = None
     return [MinX, MinY, MaxX, MaxY]
     
@@ -227,16 +230,21 @@ def main():
     InFile = sys.argv[1]
     OutFile = sys.argv[2]
     DirName=OutFile.rpartition("/")[0]
+    Extent = extent(InFile)
+    Extent = str(Extent[0])+" "+str(Extent[1])+" "+str(Extent[2])+" "+str(Extent[3])
+    os.system("gdalwarp -q -dstnodata nan -tr 250 250 -te "+Extent+" "+InFile+" "+DirName+"/input.tif")
+    InFile = DirName+"/input.tif"
     Input, InputGeoT, InputWKT, InputEPSG, InputProj4 = read(InFile, GetGeoT=True, GetWKT=True, GetEPSG=True, GetProj4=True)
     PriorFile = choose_prior(InFile, InputEPSG)
-    print(PriorFile)
-    Prior = read(PriorFile)
-    # print_time("Add edges")
-    # Input = add_edge(Input, Prior)
-    # print_time("Vectorization")
-    # Isnan = np.isnan(Input)
-    # IsnanFile = DirName+"/isnan.tif"
-    # write(Isnan,IsnanFile)
+    os.system("gdalwarp -q -dstnodata nan -tr 250 250 -te "+Extent+" "+PriorFile+" "+DirName+"/prior.tif")
+    PriorFile=DirName+"/prior.tif"
+    Prior = read(PriorFile)[0]
+    print_time("Add edges")
+    Input = add_edge(Input, Prior)
+    print_time("Vectorization")
+    Isnan = np.isnan(Input)
+    IsnanFile = DirName+"/isnan.tif"
+    write(Isnan, IsnanFile, InputGeoT, InputWKT)
     # VecFile = DirName+"/vectorized"
     # os.system("mkdir "+VecFile)
     # os.system("gdal_polygonize.py -q "+IsnanFile+" -f 'ESRI Shapefile'"+VecFile)
@@ -244,8 +252,6 @@ def main():
     # RadiusSHPFile = DirName+"/kriging_radius"
     # RadiusFile = DirName+"/kriging_radius.tif"
     # classification(VecFile, RadiusSHPFile)
-    # Extent = extent(InFile)
-    # Extent = str(Extent[0], Extent[1], Extent[2], Extent[3])
     # os.system("gdal_rasterize -q -a krig -l "+RadiusSHPFile+" -a_srs "+InputProj4+" -tr 250 250 -te "+Extent+" "+RadiusSHPFile+"/kriging_radius.shp "+RadiusFile)
     # print_time("Start Kriging")
     # os.system("./kriging.R "+InFile+" "+RadiusFile+" "+OutFile+" "+DirName)
