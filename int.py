@@ -1,11 +1,18 @@
 import sys
 from time import localtime, strftime
-from osgeo import gdal
+#from osgeo import gdal
 from osgeo import osr
 import numpy as np
-import osr
+#import osr
 import gdal
 import os
+import fiona
+from shapely.geometry import shape, LineString
+from sklearn.cluster import KMeans
+import subprocess
+import platform
+
+
 
 def print_time(Action):
     """
@@ -82,7 +89,6 @@ def read(FileName, GetGeoT=False, GetWKT=False, GetEPSG=False, GetProj4=False):
     assert DataSet.RasterCount == 1, "More than one band in GeoTiff"
     Band = DataSet.GetRasterBand(1)
     Array = Band.ReadAsArray()
-    print(Array.shape[0] - 1, Array.shape[1] - 1)
     Output = [Array, None, None, None, None]
     if GetGeoT == True:
         GeoT = DataSet.GetGeoTransform()
@@ -117,10 +123,9 @@ def write(Array, FileName, GeoT, WKT):
     """
     print("write file "+FileName)
     Driver = gdal.GetDriverByName('GTiff')
-    N = Array.shape[0]-1
-    M = Array.shape[1]-1
+    N = Array.shape[0]
+    M = Array.shape[1]
     Array = Array.astype(int)
-    print(Array.dtype)
     Type = gdal.GDT_Int32
     DataSet = Driver.Create(FileName, M, N, 1, Type) # the '1' is for band 1.
     DataSet.SetGeoTransform(GeoT)
@@ -144,7 +149,6 @@ def add_edge(Array, Edge):
     """
     N = Array.shape[0] - 1
     M = Array.shape[1] - 1
-    print(M,N)
     Array[0, :] = Edge[0, :]
     Array[:, 0] = Edge[:, 0]
     Array[N, :] = Edge[N, :]
@@ -152,7 +156,75 @@ def add_edge(Array, Edge):
     return Array
     
     
-      
+# TODO: is this reasonable?:
+def minimal_diameter(Polygon):
+    ''' 
+    Computes maximal extend of a polygon in x and y direction and returns the 
+    smaller one.
+    
+    Parameter
+    ---------
+    
+    Polygon:  shapely polygon
+        A closed polygon 
+        
+    Returns
+    -------
+    
+    scalar
+        minimal diameter of the polygon  
+    '''
+    [MinX, MinY, MaxX, MaxY] = Polygon.bounds
+    return min(MaxX - MinX, MaxY - MinY)
+
+    
+# TODO: is this reasonable?:
+def maximal_diameter(Polygon):
+    ''' 
+    Computes maximal extend of a polygon in x and y direction and returns the 
+    greater one.
+    
+    Parameter
+    ---------
+    
+    Polygon:  shapely polygon
+        A closed polygon 
+        
+    Returns
+    -------
+    
+    scalar
+        rough diameter of the polygon  
+    '''
+    [MinX, MinY, MaxX, MaxY] = Polygon.bounds
+    LineY = LineString([(MinX, MinY), (MaxX, MinY)])
+    LineX = LineString([(MinX, MinY), (MinX, MaxY)])
+    return max(LineY.length,LineX.length)
+
+ 
+# TODO: is this reasonable?: 
+def properties(Polygon):
+    ''' 
+    Computes area, perimeter and diameter of a polygon
+    
+    Parameter
+    ---------
+    
+    Polygon:  shapely polygon
+        A closed polygon 
+        
+    Returns
+    -------
+    
+    list
+        contains area, perimeter and diameter
+    '''
+    A = Polygon.area
+    Perimeter = Polygon.length
+    Diameter = minimal_diameter(Polygon)
+    return [A, Perimeter, Diameter]
+
+    
 def classification(OldFileName, NewFileName):
     """
     Classification of polygons in OldFileName which represent the gaps which 
@@ -174,7 +246,7 @@ def classification(OldFileName, NewFileName):
         for Polygon in Gaps:
             P = shape(Polygon['geometry'])
             Properties[i] = properties(P)
-            Rad[i] = diameter(P)+500
+            Rad[i] = maximal_diameter(P)+500
             i = i + 1
     Properties = np.divide(Properties, np.absolute(Properties).max(0)) 
         # scaling property values
@@ -184,16 +256,17 @@ def classification(OldFileName, NewFileName):
     Cluster = KMeans(n_clusters=NumClusters)
     Cluster.fit(Properties)
     Classes = Cluster.predict(Properties)
-    for j in xrange(NumClusters):
-        Rad[Classes == j] = np.max(Rad[Classes == j])
+    for j in range(NumClusters):
+        if Rad[Classes == j].shape[0]>1:
+            Rad[Classes == j] = np.max(Rad[Classes == j])
     i = 0
     with fiona.open(OldFileName, 'r') as Gaps:
         Schema = Gaps.schema
-        Schema['properties'].update({u'krig': 'int'})
+        Schema['properties'].update({u'KrigRad': 'int'})
         with fiona.open(NewFileName, 'w', 'ESRI Shapefile', Schema, Gaps.crs)\
                 as NewGaps:
             for Polygon in Gaps:
-                Polygon['properties'].update({u'KrigingRadius': int(Rad[i])})
+                Polygon['properties'].update({u'KrigRad': int(Rad[i])})
                 i = i + 1
                 NewGaps.write({'properties': Polygon['properties'],
                            'geometry': Polygon['geometry']})
@@ -227,16 +300,24 @@ def extent(FileName):
  
 def main():
     print_time("Computation started")
+    Platform = platform.platform()
+    # TODO: Add other platforms
+    if Platform == "Windows-10-10.0.15063-SP0":
+        Platform = "Windows"
+    else:
+        Platform = "Ollie"
     InFile = sys.argv[1]
     OutFile = sys.argv[2]
     DirName=OutFile.rpartition("/")[0]
     Extent = extent(InFile)
     Extent = str(Extent[0])+" "+str(Extent[1])+" "+str(Extent[2])+" "+str(Extent[3])
-    os.system("gdalwarp -q -dstnodata nan -tr 250 250 -te "+Extent+" "+InFile+" "+DirName+"/input.tif")
+    # TODO: remove EPSG code 
+    os.system("gdalwarp -q -overwrite -t_srs EPSG:3413 -dstnodata nan -tr 250 250 -te "+Extent+" "+InFile+" "+DirName+"/input.tif")
     InFile = DirName+"/input.tif"
+    # TODO: InputProj4 not needed
     Input, InputGeoT, InputWKT, InputEPSG, InputProj4 = read(InFile, GetGeoT=True, GetWKT=True, GetEPSG=True, GetProj4=True)
     PriorFile = choose_prior(InFile, InputEPSG)
-    os.system("gdalwarp -q -dstnodata nan -tr 250 250 -te "+Extent+" "+PriorFile+" "+DirName+"/prior.tif")
+    os.system("gdalwarp -q -overwrite -dstnodata nan -tr 250 250 -te "+Extent+" "+PriorFile+" "+DirName+"/prior.tif")
     PriorFile=DirName+"/prior.tif"
     Prior = read(PriorFile)[0]
     print_time("Add edges")
@@ -245,16 +326,23 @@ def main():
     Isnan = np.isnan(Input)
     IsnanFile = DirName+"/isnan.tif"
     write(Isnan, IsnanFile, InputGeoT, InputWKT)
-    # VecFile = DirName+"/vectorized"
-    # os.system("mkdir "+VecFile)
-    # os.system("gdal_polygonize.py -q "+IsnanFile+" -f 'ESRI Shapefile'"+VecFile)
-    # print_time("Computation of kriging radii")
-    # RadiusSHPFile = DirName+"/kriging_radius"
-    # RadiusFile = DirName+"/kriging_radius.tif"
-    # classification(VecFile, RadiusSHPFile)
-    # os.system("gdal_rasterize -q -a krig -l "+RadiusSHPFile+" -a_srs "+InputProj4+" -tr 250 250 -te "+Extent+" "+RadiusSHPFile+"/kriging_radius.shp "+RadiusFile)
-    # print_time("Start Kriging")
-    # os.system("./kriging.R "+InFile+" "+RadiusFile+" "+OutFile+" "+DirName)
+    VecFile = DirName+"/vectorized"
+    if not os.path.exists(VecFile):
+        os.makedirs(VecFile)
+    os.system("gdal_polygonize.py -q "+IsnanFile+" "+VecFile+" -f \"ESRI Shapefile\" ")
+    print_time("Computation of kriging radii")
+    RadiusSHPFile = DirName+"/kriging_radius"
+    RadiusFile = DirName+"/kriging_radius.tif"
+    classification(VecFile, RadiusSHPFile)
+    os.system("gdal_rasterize -q -a KrigRad -l kriging_radius -a_srs EPSG:"+InputEPSG+" -tr 250 250 -te "+Extent+" "+RadiusSHPFile+"/kriging_radius.shp "+RadiusFile)
+    print_time("Start Kriging")
+    #TODO: Add kriging command for other systems
+    if Platform == "Windows":
+        #subprocess.call("C://Program Files//R//R-3.2.0//bin//Rscript.exe kriging_windows.R "+InFile+" "+RadiusFile+" "+OutFile+" "+DirName)
+        subprocess.call("C:/PROGRA~1/R/R-32~1.0/bin/x64/Rscript.exe kriging_windows.R "+InFile+" "+RadiusFile+" "+OutFile+" "+DirName)
+    else:
+        print("Not ready for this system")
+        #os.system("./kriging.R "+InFile+" "+RadiusFile+" "+OutFile+" "+DirName)
 
     
 if __name__ == "__main__":
