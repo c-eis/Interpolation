@@ -1,7 +1,0 @@
-def set_pathes():
-    if "vx" in FileName:
-        PriorNorth = "C:\\Users\\Tine\\Documents\\AWI\\github\\Interpolation\\prior\\prior_vx.tif"
-        PriorSouth = "C:\\Users\\Tine\\Documents\\AWI\\github\\Interpolation\\prior\\rignot_vx.tif"
-    else:
-        PriorNorth = "C:\\Users\\Tine\\Documents\\AWI\\github\\Interpolation\\prior\\prior_vy.tif"
-        PriorSouth = "C:\\Users\\Tine\\Documents\\AWI\\github\\Interpolation\\prior\\rignot_vy.tif"
