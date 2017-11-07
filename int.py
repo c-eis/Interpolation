@@ -27,7 +27,7 @@ def print_time(Action):
     print(Action+" at "+Time)
 
     
-def choose_prior(FileName, EPSG):
+def choose_prior(FileName, EPSG, Platform):
     """
     Choose prior field which gives the edges of the file to improve 
     interpolation at the edges of the field
@@ -46,12 +46,47 @@ def choose_prior(FileName, EPSG):
     str
         path of the prior field
     """
-    if "vx" in FileName:
-        PriorNorth = "C:\\Users\\Tine\\Documents\\AWI\\github\\Interpolation\\prior\\prior_vx.tif"
-        PriorSouth = "C:\\Users\\Tine\\Documents\\AWI\\github\\Interpolation\\prior\\rignot_vx.tif"
+    if Platform == "Windows":
+        if "vx" in FileName:
+            PriorNorth = "C:\\Users\\Tine\\Documents\\AWI\\github\\Interpolation\\prior\\prior_vx.tif"
+            PriorSouth = "C:\\Users\\Tine\\Documents\\AWI\\github\\Interpolation\\prior\\rignot_vx.tif"
+        elif "vy" in FileName:
+            PriorNorth = "C:\\Users\\Tine\\Documents\\AWI\\github\\Interpolation\\prior\\prior_vy.tif"
+            PriorSouth = "C:\\Users\\Tine\\Documents\\AWI\\github\\Interpolation\\prior\\rignot_vy.tif"
+        else:
+            # TODO assertion
+            print("FileName must include vx or vy!")
+            PriorNorth = None
+            PriorSouth = None
+    elif Platform == "Mac":
+        if "vx" in FileName:
+            PriorNorth = "/Users/cluettig/Documents/Daten/prior/prior_vx.tif"
+            PriorSouth = "/Users/cluettig/Documents/Daten/prior/rignot_vx.tif"
+        elif "vy" in FileName:
+            PriorNorth = "/Users/cluettig/Documents/Daten/prior/prior_vy.tif"
+            PriorSouth = "/Users/cluettig/Documents/Daten/prior/rignot_vy.tif"
+        else:
+            # TODO assertion
+            print("FileName must include vx or vy!")
+            PriorNorth = None
+            PriorSouth = None
+    elif Platform == "Ollie":
+        # TODO: Add Ollie Pathes!
+        if "vx" in FileName:
+            PriorNorth = ""
+            PriorSouth = ""
+        elif "vy" in FileName:
+            PriorNorth = ""
+            PriorSouth = ""
+        else:
+            # TODO assertion
+            print("FileName must include vx or vy!")
+            PriorNorth = None
+            PriorSouth = None
     else:
-        PriorNorth = "C:\\Users\\Tine\\Documents\\AWI\\github\\Interpolation\\prior\\prior_vy.tif"
-        PriorSouth = "C:\\Users\\Tine\\Documents\\AWI\\github\\Interpolation\\prior\\rignot_vy.tif"
+        # TODO: assert
+        print("Unknown Prior Pathes! Please add pathes for this platform in choose_prior(FileName, EPSG, Platform).")
+        
     DataSet = gdal.Open(PriorNorth, gdal.GA_ReadOnly)
     SRS = osr.SpatialReference()
     SRS.ImportFromWkt(DataSet.GetProjectionRef())
@@ -304,19 +339,23 @@ def main():
     # TODO: Add other platforms
     if Platform == "Windows-10-10.0.15063-SP0":
         Platform = "Windows"
+    elif Platform == "Darwin-15.6.0-x86_64-i386-64bit":
+        Platform = "Mac"
     else:
         Platform = "Ollie"
     InFile = sys.argv[1]
     OutFile = sys.argv[2]
-    DirName=OutFile.rpartition("/")[0]
+    DirName = OutFile.rpartition("/")[0]
+    BaseName = InFile.rpartition("/")[2]
+    BaseName = BaseName.rpartition(".")[0]
     Extent = extent(InFile)
     Extent = str(Extent[0])+" "+str(Extent[1])+" "+str(Extent[2])+" "+str(Extent[3])
     # TODO: remove EPSG code 
-    os.system("gdalwarp -q -overwrite -t_srs EPSG:3413 -dstnodata nan -tr 250 250 -te "+Extent+" "+InFile+" "+DirName+"/input.tif")
-    InFile = DirName+"/input.tif"
+    os.system("gdalwarp -q -overwrite -t_srs EPSG:3413 -dstnodata nan -tr 250 250 -te "+Extent+" "+InFile+" "+DirName+"/"+BaseName+"_input.tif")
+    InFile = DirName+"/"+BaseName+"_input.tif"
     # TODO: InputProj4 not needed
     Input, InputGeoT, InputWKT, InputEPSG, InputProj4 = read(InFile, GetGeoT=True, GetWKT=True, GetEPSG=True, GetProj4=True)
-    PriorFile = choose_prior(InFile, InputEPSG)
+    PriorFile = choose_prior(InFile, InputEPSG, Platform)
     os.system("gdalwarp -q -overwrite -dstnodata nan -tr 250 250 -te "+Extent+" "+PriorFile+" "+DirName+"/prior.tif")
     PriorFile=DirName+"/prior.tif"
     Prior = read(PriorFile)[0]
