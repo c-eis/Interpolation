@@ -379,6 +379,9 @@ def main():
     if Platform == "Windows":
         #subprocess.call("C://Program Files//R//R-3.2.0//bin//Rscript.exe kriging_windows.R "+InFile+" "+RadiusFile+" "+OutFile+" "+DirName)
         subprocess.call("C:/PROGRA~1/R/R-32~1.0/bin/x64/Rscript.exe kriging_windows.R "+InFile+" "+RadiusFile+" "+OutFile+" "+DirName)
+    elif Platform == "Mac":
+        os.system("./kriging_mac.R "+InFile+" "+RadiusFile+" "+OutFile+" "+DirName)
+
     else:
         print("Not ready for this system")
         #os.system("./kriging.R "+InFile+" "+RadiusFile+" "+OutFile+" "+DirName)
