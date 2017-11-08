@@ -1,4 +1,4 @@
-#!/opt/local/Library/Frameworks/R.framework/Resources/bin/exec/R
+#!/opt/local/bin/Rscript
 rm(list = ls())
 Library = "~/Library/R/3.4/library"
 # library("foreach", lib.loc=Library)
@@ -18,6 +18,7 @@ source("fitmodel.R")
 
 args <- commandArgs(TRUE)
 InputFileName <- args[1]
+print(InputFileName)
 RadiusFileName <- args[2]
 OutputFileName <- args[3]
 Directory <- args[4]
@@ -28,20 +29,20 @@ InputRaster <- raster(InputFileName)
 RadiusRaster <- raster(RadiusFileName)
 
 # ######### FORMAT DATA ############################################################################################
-GivenPoints <- as.data.frame(Input, xy=TRUE, na.rm=TRUE) # vlaues and coordinates of given positions
+GivenPoints <- as.data.frame(InputRaster, xy=TRUE, na.rm=TRUE) # vlaues and coordinates of given positions
 Radius <- as.data.frame(RadiusRaster)
-AllPoints <- as.data.frame(Input, xy=True)
+AllPoints <- as.data.frame(InputRaster, xy=TRUE)
 SearchedPoints <- AllPoints[(is.na(AllPoints$input)) & Radius$KrigRad!=0]
-SearchedPoints$input <- NULL 
-SearchedPoints <- cbind(SearchedPoints, Radius$KrigRad)  #Coordinates and kriging radius of searched positions
-rm(Radius, AllPoints, InputRaster, RadiusRaster)
+#SearchedPoints$input <- NULL 
+#SearchedPoints <- cbind(SearchedPoints, Radius$KrigRad)  #Coordinates and kriging radius of searched positions
+#rm(Radius, AllPoints, InputRaster, RadiusRaster)
 
 # # Possibility to take only a subsample for kriging:
-SampleSize=500
-if (SampleSize>nrow(GivenPoints))
-{
-    KrigingSample <- GivenPoints[sample(1:nrow(GivenPoints), SampleSize, replace=FALSE)]
-}   
+#SampleSize=500
+#if (SampleSize>nrow(GivenPoints))
+#{
+#    KrigingSample <- GivenPoints[sample(1:nrow(GivenPoints), SampleSize, replace=FALSE)]
+#}   
 # sub1 = length(z_notnan)/1 # number of data points in subsample
 # if (length(z_notnan) > sub1)
 # {
