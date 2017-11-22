@@ -1,12 +1,13 @@
-# ### #!/usr/bin/env Rscript
 #!/C:/PROGRA~1/R/R-32~1.0/bin/x64/Rscript.exe
 rm(list = ls())
+check = "check"
 Library = "~/Documents/R/win-library/3.4"
 # library("foreach", lib.loc=Library)
 # library("iterators", lib.loc=Library)
 # library("doParallel",lib.loc=Library)
 # library("gstat",lib.loc=Library)
 library("sp",lib.loc=Library)
+library("rgdal",lib.loc=Library)
 # library("nlme",lib.loc=Library)
 # library("ncdf4",lib.loc=Library)
 # library("ncdf4.helpers",lib.loc=Library)
@@ -16,51 +17,47 @@ library("raster",lib.loc=Library)
 source("fitmodel.R")
 
 ######### INPUT ###################################################################################################
+#args <- commandArgs(TRUE)
+#InputFileName <- args[1]
+#RadiusFileName <- args[2]
+#OutputFileName <- args[3]
+#Directory <- args[4]
+InputFileName <- "../test_files/79_test/vx_input.tif"
+RadiusFileName <- " ../test_files/79_test/kriging_radius.tif"
 
-args <- commandArgs(TRUE)
-InputFileName <- args[1]
-RadiusFileName <- args[2]
-OutputFileName <- args[3]
-Directory <- args[4]
+######### FLAGS ###################################################################################################
+
+RandomKrigingSubset = TRUE
+OuterKrigingSubset = TRUE
 
 ######### READ ###################################################################################################
 
 InputRaster <- raster(InputFileName)
 RadiusRaster <- raster(RadiusFileName)
 
-# ######### FORMAT DATA ############################################################################################
-GivenPoints <- as.data.frame(Input, xy=TRUE, na.rm=TRUE) # vlaues and coordinates of given positions
+######### FORMAT DATA ############################################################################################
+GivenPoints <- as.data.frame(InputRaster, xy=TRUE, na.rm=TRUE) # values and coordinates of given positions
 Radius <- as.data.frame(RadiusRaster)
-AllPoints <- as.data.frame(Input, xy=True)
-SearchedPoints <- AllPoints[(is.na(AllPoints$input)) & Radius$KrigRad!=0]
-SearchedPoints$input <- NULL 
-SearchedPoints <- cbind(SearchedPoints, Radius$KrigRad)  #Coordinates and kriging radius of searched positions
-rm(Radius, AllPoints, InputRaster, RadiusRaster)
+AllPoints <- as.data.frame(InputRaster, xy=TRUE)
+InputLayerName <- strsplit(strsplit(InputFileName,"/")[[1]][4],"\\.")[[1]][1]
+SearchedPoints <- AllPoints[(is.na(AllPoints[InputLayerName])) & Radius$kriging_radius!=0,]
+SearchedPoints[InputLayerName] <- NULL 
+SearchedPoints <- cbind(SearchedPoints, Radius[(is.na(AllPoints[InputLayerName])) & Radius$kriging_radius!=0,])  #Coordinates and kriging radius of searched positions
+rm(Radius, AllPoints, InputRaster, RadiusRaster, RadiusFileName, InputFileName, InputLayerName)
 
-# # Possibility to take only a subsample for kriging:
-SampleSize=500
-if (SampleSize>nrow(GivenPoints))
+# Possibility to take only a subsample for kriging:
+if (RandomKrigingSubset){
+    SampleSize=500
+} else {
+    SampleSize = nrow(GivenPoints)
+}
+KrigingSample <- GivenPoints[sample(nrow(GivenPoints), SampleSize),]
+# Possibility to take only outer points for kriging:
+if (OuterKrigingSubset)
 {
-    KrigingSample <- GivenPoints[sample(1:nrow(GivenPoints), SampleSize, replace=FALSE)]
-}   
-# sub1 = length(z_notnan)/1 # number of data points in subsample
-# if (length(z_notnan) > sub1)
-# {
-  # s <- 1:length(z_notnan)
-  # IX <- sample(s,sub1)
-  # x <- x_notnan[IX]
-  # y <- y_notnan[IX]
-  # z <- z_notnan[IX]
-# } else
-# {
-  # x <- x_notnan
-  # y <- y_notnan
-  # z <- z_notnan
-# }
-
-# # Possibility to take only outer points for kriging:
-# outer_p <- 1
-# print("reaches outer")
+    write("prints to stdout", "")
+    #OuterKrigingSubset
+}
 # if (outer_p == 1)
 # {
   # z_outer <- z_data
@@ -273,3 +270,4 @@ if (SampleSize>nrow(GivenPoints))
 # nc_data <- nc_open(fnewname, write = TRUE)
 # z_data <- ncvar_put(nc_data, varid = "z",vals = z_new)
 # nc_close(nc_data)
+check
