@@ -1,10 +1,10 @@
 import sys
 from time import localtime, strftime
-#from osgeo import gdal
+from osgeo import gdal
 from osgeo import osr
 import numpy as np
 #import osr
-import gdal
+#import gdal
 import os
 import fiona
 from shapely.geometry import shape, LineString
@@ -46,6 +46,7 @@ def choose_prior(FileName, EPSG, Platform):
     str
         path of the prior field
     """
+    print(Platform)
     if Platform == "Windows":
         if "vx" in FileName:
             PriorNorth = "C:\\Users\\Tine\\Documents\\AWI\\github\\Interpolation\\prior\\prior_vx.tif"
@@ -336,10 +337,19 @@ def extent(FileName):
 def main():
     print_time("Computation started")
     Platform = platform.platform()
-    # TODO: Add other platforms
+    # TODO: Add other platforms otherwise wrong platform results in 
+    #   ERROR 4: : No such file or directory
+    #   Traceback (most recent call last):
+    #   File "int.py", line 392, in <module>
+    #   main()
+    #   File "int.py", line 359, in main
+    #   PriorFile = choose_prior(InFile, InputEPSG, Platform)
+    #   File "int.py", line 93, in choose_prior
+    #   SRS.ImportFromWkt(DataSet.GetProjectionRef())
+    #   AttributeError: 'NoneType' object has no attribute 'GetProjectionRef'
     if Platform == "Windows-10-10.0.15063-SP0":
         Platform = "Windows"
-    elif Platform == "Darwin-15.6.0-x86_64-i386-64bit":
+    elif Platform == "Darwin-17.2.0-x86_64-i386-64bit":
         Platform = "Mac"
     else:
         Platform = "Ollie"
