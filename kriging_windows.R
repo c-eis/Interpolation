@@ -1,119 +1,83 @@
-# ### #!/usr/bin/env Rscript
 #!/C:/PROGRA~1/R/R-32~1.0/bin/x64/Rscript.exe
 rm(list = ls())
+check = "check"
 Library = "~/Documents/R/win-library/3.4"
 # library("foreach", lib.loc=Library)
 # library("iterators", lib.loc=Library)
 # library("doParallel",lib.loc=Library)
 # library("gstat",lib.loc=Library)
 library("sp",lib.loc=Library)
+library("rgdal",lib.loc=Library)
 # library("nlme",lib.loc=Library)
 # library("ncdf4",lib.loc=Library)
 # library("ncdf4.helpers",lib.loc=Library)
 # library("lattice",lib.loc=Library)
 library("raster",lib.loc=Library)
 # library("plyr",lib.loc=Library)
+library("igraph",lib.loc=Library)
 source("fitmodel.R")
 
 ######### INPUT ###################################################################################################
+#args <- commandArgs(TRUE)
+#InputFileName <- args[1]
+#RadiusFileName <- args[2]
+#OutputFileName <- args[3]
+#Directory <- args[4]
+InputFileName <- "../test_files/79_test/vx_input.tif"
+RadiusFileName <- " ../test_files/79_test/kriging_radius.tif"
+Directory <- " ../test_files/79_test/"
+######### FLAGS ###################################################################################################
 
-args <- commandArgs(TRUE)
-InputFileName <- args[1]
-RadiusFileName <- args[2]
-OutputFileName <- args[3]
-Directory <- args[4]
+RandomKrigingSubset = FALSE
+BoundaryKrigingSubset = TRUE
+VariogramSubset = TRUE
 
 ######### READ ###################################################################################################
 
 InputRaster <- raster(InputFileName)
 RadiusRaster <- raster(RadiusFileName)
 
-# ######### FORMAT DATA ############################################################################################
-GivenPoints <- as.data.frame(Input, xy=TRUE, na.rm=TRUE) # vlaues and coordinates of given positions
+######### FORMAT DATA ############################################################################################
+GivenPoints <- as.data.frame(InputRaster, xy=TRUE, na.rm=TRUE) # values and coordinates of given positions
 Radius <- as.data.frame(RadiusRaster)
-AllPoints <- as.data.frame(Input, xy=True)
-SearchedPoints <- AllPoints[(is.na(AllPoints$input)) & Radius$KrigRad!=0]
-SearchedPoints$input <- NULL 
-SearchedPoints <- cbind(SearchedPoints, Radius$KrigRad)  #Coordinates and kriging radius of searched positions
-rm(Radius, AllPoints, InputRaster, RadiusRaster)
+AllPoints <- as.data.frame(InputRaster, xy=TRUE)
+InputLayerName <- strsplit(strsplit(InputFileName,"/")[[1]][4],"\\.")[[1]][1]
+SearchedPoints <- AllPoints[(is.na(AllPoints[InputLayerName])) & Radius$kriging_radius!=0,]
+SearchedPoints[InputLayerName] <- NULL 
+SearchedPoints <- cbind(SearchedPoints, Radius[(is.na(AllPoints[InputLayerName])) & Radius$kriging_radius!=0,])  #Coordinates and kriging radius of searched positions
+rm(Radius, AllPoints, RadiusRaster, RadiusFileName, InputFileName)
 
-# # Possibility to take only a subsample for kriging:
-SampleSize=500
-if (SampleSize>nrow(GivenPoints))
-{
-    KrigingSample <- GivenPoints[sample(1:nrow(GivenPoints), SampleSize, replace=FALSE)]
-}   
-# sub1 = length(z_notnan)/1 # number of data points in subsample
-# if (length(z_notnan) > sub1)
-# {
-  # s <- 1:length(z_notnan)
-  # IX <- sample(s,sub1)
-  # x <- x_notnan[IX]
-  # y <- y_notnan[IX]
-  # z <- z_notnan[IX]
-# } else
-# {
-  # x <- x_notnan
-  # y <- y_notnan
-  # z <- z_notnan
-# }
+# Possibility to take only boundary points for kriging:
+if (BoundaryKrigingSubset){
+  BoundaryRaster <- boundaries(clump(InputRaster))
+  KrigingSample <- as.data.frame(BoundaryRaster)
+  KrigingSample <- GivenPoints[KrigingSample==1,]
+} else {
+  KrigingSample <- GivenPoints
+}
 
-# # Possibility to take only outer points for kriging:
-# outer_p <- 1
-# print("reaches outer")
-# if (outer_p == 1)
-# {
-  # z_outer <- z_data
-  # nan_mat <- is.na(z_data)
-  # for (i in 1:length(x_coor))
-  # {
-      # for (j in 1:length(y_coor))
-      # {
-	# if (nan_mat[i,j]==0)
-	# {
-	  # if (i-1 >= 1 && i+1 <= length(x_coor) && j-1 >= 1 && j+1 <= length(y_coor))
-	  # {
-		# n_nan_neighbours <- nan_mat[i-1,j] + nan_mat[i+1,j] + nan_mat[i,j-1] + nan_mat[i,j+1]
-		# if (n_nan_neighbours == 0)
-		# {
-			# z_outer[i,j] <- NA
-		# }
-	  # }
-	# }
-      # }
-  # }  
-  # z_o <- as.vector(z_outer)
-  # y_o <- rep(x_coor,times = length(y_coor))
-  # x_o <- rep(y_coor,each = length(x_coor))
-  # x <- x_o[!is.na(z_o)]
-  # y <- y_o[!is.na(z_o)]
-  # z <- z_o[!is.na(z_o)]
-# } else
-# {
-  # x <- x_notnan
-  # y <- y_notnan
-  # z <- z_notnan 
-# }
+# Possibility to take only a subsample for kriging:
+if (RandomKrigingSubset) {
+  SampleSize <- 1000
+  if (SampleSize < nrow(KrigingSample)) {
+    KrigingSample <- KrigingSample[sample(nrow(KrigingSample), SampleSize),]
+  }
+}
 
-# # Possibility to take only a subsample for variogram estimation:
-# sub2 = 1000 # number of data points in subsample
-# if (length(z) > sub2)
-# {
-  # s <- 1:length(z)
-  # IX <- sample(s,sub2)
-  # x_v <- x[IX]
-  # y_v <- y[IX]
-  # z_v <- z[IX]
-# } else {
-  # x_v <- x
-  # y_v <- y
-  # z_v <- z
-# }
-# rm(x_o,y_o,z_o,z_outer,nan_mat,z_data,s,IX)
-
-# ################ TREND REMOVAL ###########################################################################################
+# Possibility to take only a subsample for variogram estimation:
+if (VariogramSubset) {
+  SampleSize <- 1000
+  if (SampleSize < nrow(KrigingSample)) {
+    VariogramSample <- KrigingSample[sample(nrow(KrigingSample), SampleSize),]
+  } else {
+    VariogramSample <- KrigingSample
+  }
+}
+#TODO: why are there NA values in x, y and z of VariogramSample and in KrigingSample???
+  
+################ TREND REMOVAL ###########################################################################################
 # print("trend removal")
-# model <- fitmodel(x_v,y_v,z_v, dir)
+Model <- fitmodel(VariogramSample["x"],VariogramSample["y"], VariogramSample[InputLayerName], Directory)
 # model$coefficients[is.na(model$coefficients)] <- 0
 # if (length(model$coefficients) == 16)
 # {
@@ -273,3 +237,5 @@ if (SampleSize>nrow(GivenPoints))
 # nc_data <- nc_open(fnewname, write = TRUE)
 # z_data <- ncvar_put(nc_data, varid = "z",vals = z_new)
 # nc_close(nc_data)
+check
+

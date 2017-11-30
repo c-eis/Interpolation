@@ -1,7 +1,7 @@
 fitmodel <- function(x,y,z,d){
-  png(paste(d,"corr.png"))
-  plot(data.frame(x,y,z))
-  dev.off()
+  #png(paste(d,"corr.png"))
+  #plot(data.frame(x,y,z))
+  #dev.off()
   model_lin_xy <- lm(z~poly(x,degree=1,raw=TRUE)*poly(y,degree=1,raw=TRUE))
   r2_lin_xy <- summary(model_lin_xy)$adj.r.squared
   model_quad_xy <- lm(z~poly(x,degree=2,raw=TRUE)*poly(y,degree=2,raw=TRUE))

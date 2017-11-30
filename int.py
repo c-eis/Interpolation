@@ -3,13 +3,12 @@ from time import localtime, strftime
 from osgeo import gdal
 from osgeo import osr
 import numpy as np
-#import osr
-#import gdal
 import os
 import fiona
 from shapely.geometry import shape, LineString
 from sklearn.cluster import KMeans
 import subprocess
+from subprocess import check_output
 import platform
 
 
@@ -48,6 +47,7 @@ def choose_prior(FileName, EPSG, Platform):
     """
     print(Platform)
     if Platform == "Windows":
+        # TODO: correct files in directory, there are only dummy copies yet
         if "vx" in FileName:
             PriorNorth = "C:\\Users\\Tine\\Documents\\AWI\\github\\Interpolation\\prior\\prior_vx.tif"
             PriorSouth = "C:\\Users\\Tine\\Documents\\AWI\\github\\Interpolation\\prior\\rignot_vx.tif"
@@ -92,6 +92,7 @@ def choose_prior(FileName, EPSG, Platform):
     SRS = osr.SpatialReference()
     SRS.ImportFromWkt(DataSet.GetProjectionRef())
     EPSGPrior=SRS.GetAuthorityCode(None)
+    #TODO: other EPSG codes possible
     if EPSGPrior == EPSG:
         PriorFile = PriorNorth
     else:
@@ -387,8 +388,9 @@ def main():
     print_time("Start Kriging")
     #TODO: Add kriging command for other systems
     if Platform == "Windows":
-        #subprocess.call("C://Program Files//R//R-3.2.0//bin//Rscript.exe kriging_windows.R "+InFile+" "+RadiusFile+" "+OutFile+" "+DirName)
-        subprocess.call("C:/PROGRA~1/R/R-32~1.0/bin/x64/Rscript.exe kriging_windows.R "+InFile+" "+RadiusFile+" "+OutFile+" "+DirName)
+        Command = ["C:/PROGRA~1/R/R-34~1.2/bin/x64/Rscript.exe", "kriging_windows.R", InFile, RadiusFile, OutFile, DirName]
+        Out=subprocess.check_output(Command)
+        print(Out.decode())
     elif Platform == "Mac":
         os.system("./kriging_mac.R "+InFile+" "+RadiusFile+" "+OutFile+" "+DirName)
 
