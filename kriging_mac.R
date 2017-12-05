@@ -1,275 +1,275 @@
 #!/opt/local/bin/Rscript
 rm(list = ls())
+check = "check"
 Library = "~/Library/R/3.4/library"
-# library("foreach", lib.loc=Library)
-# library("iterators", lib.loc=Library)
-# library("doParallel",lib.loc=Library)
-# library("gstat",lib.loc=Library)
-library("sp",lib.loc=Library)
-# library("nlme",lib.loc=Library)
-# library("ncdf4",lib.loc=Library)
-# library("ncdf4.helpers",lib.loc=Library)
-# library("lattice",lib.loc=Library)
-library("raster",lib.loc=Library)
-# library("plyr",lib.loc=Library)
+library("doParallel", lib.loc = Library)
+library("gstat", lib.loc = Library)
+library("sp", lib.loc = Library)
+library("rgdal", lib.loc = Library)
+library("raster", lib.loc = Library)
+setwd("~/Documents/Daten/github/Kriging")
 source("fitmodel.R")
 
 ######### INPUT ###################################################################################################
 
 args <- commandArgs(TRUE)
 InputFileName <- args[1]
-print(InputFileName)
 RadiusFileName <- args[2]
 OutputFileName <- args[3]
 Directory <- args[4]
+#InputFileName <- "/Users/cluettig/Documents/Daten/Greenland/data/Kriging_test/vx_input.tif"
+#RadiusFileName <- "/Users/cluettig/Documents/Daten/Greenland/data/Kriging_test/kriging_radius.tif"
+#Directory <- "/Users/cluettig/Documents/Daten/Greenland/data/Kriging_test"
+#OutputFileName <- "/Users/cluettig/Documents/Daten/Greenland/data/Kriging_test/vx_int.tif"
+
+######### FLAGS ###################################################################################################
+
+RandomKrigingSubset = FALSE
+BoundaryKrigingSubset = TRUE
+VariogramSubset = TRUE
 
 ######### READ ###################################################################################################
 
 InputRaster <- raster(InputFileName)
 RadiusRaster <- raster(RadiusFileName)
 
-# ######### FORMAT DATA ############################################################################################
-GivenPoints <- as.data.frame(InputRaster, xy=TRUE, na.rm=TRUE) # vlaues and coordinates of given positions
+######### FORMAT DATA ############################################################################################
+GivenPoints <- as.data.frame(InputRaster, xy = TRUE, na.rm = TRUE) # values and coordinates of given positions
 Radius <- as.data.frame(RadiusRaster)
-AllPoints <- as.data.frame(InputRaster, xy=TRUE)
-SearchedPoints <- AllPoints[(is.na(AllPoints$input)) & Radius$KrigRad!=0]
-#SearchedPoints$input <- NULL 
-#SearchedPoints <- cbind(SearchedPoints, Radius$KrigRad)  #Coordinates and kriging radius of searched positions
-#rm(Radius, AllPoints, InputRaster, RadiusRaster)
+AllPoints <- as.data.frame(InputRaster, xy = TRUE)
+InputLayerName <- strsplit(tail(strsplit(InputFileName,"/")[[1]], n = 1),"\\.")[[1]][1]
+SearchedPoints <- AllPoints[(is.na(AllPoints[InputLayerName])) & Radius$kriging_radius != 0,]
+SearchedPoints[InputLayerName] <- NULL 
+SearchedPoints <- cbind(SearchedPoints, "z" = Radius[(is.na(AllPoints[InputLayerName])) & Radius$kriging_radius != 0,])  #Coordinates and kriging radius of searched positions
 
-# # Possibility to take only a subsample for kriging:
-#SampleSize=500
-#if (SampleSize>nrow(GivenPoints))
-#{
-#    KrigingSample <- GivenPoints[sample(1:nrow(GivenPoints), SampleSize, replace=FALSE)]
-#}   
-# sub1 = length(z_notnan)/1 # number of data points in subsample
-# if (length(z_notnan) > sub1)
-# {
-  # s <- 1:length(z_notnan)
-  # IX <- sample(s,sub1)
-  # x <- x_notnan[IX]
-  # y <- y_notnan[IX]
-  # z <- z_notnan[IX]
-# } else
-# {
-  # x <- x_notnan
-  # y <- y_notnan
-  # z <- z_notnan
-# }
+if (BoundaryKrigingSubset || RandomKrigingSubset) {
+    # Possibility to take only boundary points for kriging:
+  if (BoundaryKrigingSubset) {
+    BoundaryRaster <- boundaries(clump(InputRaster))
+    HelpKrigingSample <- as.data.frame(BoundaryRaster)
+    HelpKrigingSample[is.na(HelpKrigingSample)] <- FALSE
+    KrigingSample <- AllPoints[HelpKrigingSample == 1,]
+  } else {
+    KrigingSample <- GivenPoints
+  }
+    # Possibility to take only a subsample for kriging:
+  if (RandomKrigingSubset) {
+    SampleSize <- 1000
+    if (SampleSize < nrow(KrigingSample)) {
+      KrigingSample <- KrigingSample[sample(nrow(KrigingSample), SampleSize),]
+    }
+  }
+} else {
+    KrigingSample <- GivenPoints
+}
 
-# # Possibility to take only outer points for kriging:
-# outer_p <- 1
-# print("reaches outer")
-# if (outer_p == 1)
-# {
-  # z_outer <- z_data
-  # nan_mat <- is.na(z_data)
-  # for (i in 1:length(x_coor))
-  # {
-      # for (j in 1:length(y_coor))
-      # {
-	# if (nan_mat[i,j]==0)
-	# {
-	  # if (i-1 >= 1 && i+1 <= length(x_coor) && j-1 >= 1 && j+1 <= length(y_coor))
-	  # {
-		# n_nan_neighbours <- nan_mat[i-1,j] + nan_mat[i+1,j] + nan_mat[i,j-1] + nan_mat[i,j+1]
-		# if (n_nan_neighbours == 0)
-		# {
-			# z_outer[i,j] <- NA
-		# }
-	  # }
-	# }
-      # }
-  # }  
-  # z_o <- as.vector(z_outer)
-  # y_o <- rep(x_coor,times = length(y_coor))
-  # x_o <- rep(y_coor,each = length(x_coor))
-  # x <- x_o[!is.na(z_o)]
-  # y <- y_o[!is.na(z_o)]
-  # z <- z_o[!is.na(z_o)]
-# } else
-# {
-  # x <- x_notnan
-  # y <- y_notnan
-  # z <- z_notnan 
-# }
+# Possibility to take only a subsample for variogram estimation:
+if (VariogramSubset) {
+  SampleSize <- 1000
+  if (SampleSize < nrow(KrigingSample)) {
+    VariogramSample <- KrigingSample[sample(nrow(KrigingSample), SampleSize),]
+  } else {
+    VariogramSample <- KrigingSample
+  }
+} else {
+  VariogramSample <- KrigingSample
+}
+names(VariogramSample)[names(VariogramSample) == InputLayerName] <- "z"
+names(GivenPoints)[names(GivenPoints) == InputLayerName] <- "z"
+names(KrigingSample)[names(KrigingSample) == InputLayerName] <- "z"
 
-# # Possibility to take only a subsample for variogram estimation:
-# sub2 = 1000 # number of data points in subsample
-# if (length(z) > sub2)
-# {
-  # s <- 1:length(z)
-  # IX <- sample(s,sub2)
-  # x_v <- x[IX]
-  # y_v <- y[IX]
-  # z_v <- z[IX]
-# } else {
-  # x_v <- x
-  # y_v <- y
-  # z_v <- z
-# }
-# rm(x_o,y_o,z_o,z_outer,nan_mat,z_data,s,IX)
+rm(Radius, AllPoints, RadiusRaster, RadiusFileName, InputFileName, HelpKrigingSample, BoundaryRaster, InputRaster)
 
-# ################ TREND REMOVAL ###########################################################################################
+
+################ TREND REMOVAL ###########################################################################################
 # print("trend removal")
-# model <- fitmodel(x_v,y_v,z_v, dir)
-# model$coefficients[is.na(model$coefficients)] <- 0
-# if (length(model$coefficients) == 16)
-# {
-  # print("cubic trend model")
-  # z_v <- z_v - (model$coefficients[1] + model$coefficients[2]*x_v + model$coefficients[3]*x_v^2 
-               # + model$coefficients[4]*x_v^3 + model$coefficients[5]*y_v + model$coefficients[6]*y_v^2 
-               # + model$coefficients[7]*y_v^3 + model$coefficients[8]*x_v*y_v + model$coefficients[9]*x_v^2*y_v 
-               # + model$coefficients[10]*x_v^3*y_v + model$coefficients[11]*x_v*y_v^2 + model$coefficients[12]*x_v^2*y_v^2 
-               # + model$coefficients[13]*x_v^3*y_v^2 + model$coefficients[14]*x_v*y_v^3 + model$coefficients[15]*x_v^2*y_v^3 
-               # + model$coefficients[16]*x_v^3*y_v^3)
-  # z <- z - (model$coefficients[1] + model$coefficients[2]*x + model$coefficients[3]*x^2 
-            # + model$coefficients[4]*x^3 + model$coefficients[5]*y + model$coefficients[6]*y^2 
-            # + model$coefficients[7]*y^3 + model$coefficients[8]*x*y + model$coefficients[9]*x^2*y 
-            # + model$coefficients[10]*x^3*y + model$coefficients[11]*x*y^2 + model$coefficients[12]*x^2*y^2 
-            # + model$coefficients[13]*x^3*y^2 + model$coefficients[14]*x*y^3 + model$coefficients[15]*x^2*y^3 
-            # + model$coefficients[16]*x^3*y^3)
-# }else if (length(model$coefficients) == 9)
-# {
-  # print("quadratic trend model")
-  # z_v <- z_v - (model$coefficients[1] + model$coefficients[2]*x_v + model$coefficients[3]*x_v^2 
-               # + model$coefficients[4]*y_v + model$coefficients[5]*y_v^2 + model$coefficients[6]*x_v*y_v 
-               # + model$coefficients[7]*x_v^2*y_v + model$coefficients[8]*x_v*y_v^2 
-               # + model$coefficients[9]*x_v^2*y_v^2)
-  # z <- z - (model$coefficients[1] + model$coefficients[2]*x + model$coefficients[3]*x^2 
-            # + model$coefficients[4]*y + model$coefficients[5]*y^2 + model$coefficients[6]*x*y 
-            # + model$coefficients[7]*x^2*y + model$coefficients[8]*x*y^2 + model$coefficients[9]*x^2*y^2)
-# }else if (length(model$coefficients) == 4)
-# {
-  # print("linear trend model")
-  # z_v <- z_v - (model$coefficients[1] + model$coefficients[2]*x_v 
-               # + model$coefficients[3]*y_v + model$coefficients[4]*x_v*y_v)
-  # z <- z - (model$coefficients[1] + model$coefficients[2]*x 
-            # + model$coefficients[3]*y + model$coefficients[4]*x*y)
-# }else{
-  # print("Error while substracting the trend model")
-# }
-# d_v <- data.frame(x_v,y_v,z_v)
-# # Plot of variables after removing the trend:
-# png(paste(dir,"corr_model_substr.png"))
-# plot(d_v)
-# dev.off()
+png(paste(Directory, "/correlation.png", sep = ""))
+plot(VariogramSample)
+dev.off()
 
-# ########## VARIOGRAM ESTIMATION ###################################################################################################
-# print("variogram")
-# coordinates(d_v) = ~x_v+y_v
+Model <- fitmodel(unlist(VariogramSample["x"]),unlist(VariogramSample["y"]), unlist(VariogramSample["z"]), Directory)
+Model$coefficients[is.na(Model$coefficients)] <- 0
+if (length(Model$coefficients) == 16) {
+  print("cubic trend model")
+  VariogramSample["z"] <- VariogramSample["z"] - (Model$coefficients[1] 
+    + Model$coefficients[2] * VariogramSample["x"]
+    + Model$coefficients[3] * VariogramSample["x"]^2 
+    + Model$coefficients[4] * VariogramSample["x"]^3 
+    + Model$coefficients[5] * VariogramSample["y"] 
+    + Model$coefficients[6] * VariogramSample["y"]^2
+    + Model$coefficients[7] * VariogramSample["y"]^3 
+    + Model$coefficients[8] * VariogramSample["x"] * VariogramSample["y"] 
+    + Model$coefficients[9] * VariogramSample["x"]^2 * VariogramSample["y"]
+    + Model$coefficients[10] * VariogramSample["x"]^3 * VariogramSample["y"] 
+    + Model$coefficients[11] * VariogramSample["x"] * VariogramSample["y"]^2 
+    + Model$coefficients[12] * VariogramSample["x"]^2 * VariogramSample["y"]^2
+    + Model$coefficients[13] * VariogramSample["x"]^3 * VariogramSample["y"]^2 
+    + Model$coefficients[14] * VariogramSample["x"] * VariogramSample["y"]^3 
+    + Model$coefficients[15] * VariogramSample["x"]^2 * VariogramSample["y"]^3
+    + Model$coefficients[16] * VariogramSample["x"]^3 * VariogramSample["y"]^3)
+  KrigingSample["z"] <- KrigingSample["z"] - (Model$coefficients[1]
+    + Model$coefficients[2] * KrigingSample["x"] 
+    + Model$coefficients[3] * KrigingSample["x"]^2
+    + Model$coefficients[4] * KrigingSample["x"]^3 
+    + Model$coefficients[5] * KrigingSample["y"]
+    + Model$coefficients[6] * KrigingSample["y"]^2
+    + Model$coefficients[7] * KrigingSample["y"]^3 
+    + Model$coefficients[8] * KrigingSample["x"] * KrigingSample["y"] 
+    + Model$coefficients[9] * KrigingSample["x"]^2 * KrigingSample["y"]
+    + Model$coefficients[10] * KrigingSample["x"]^3 * KrigingSample["y"]
+    + Model$coefficients[11] * KrigingSample["x"] * KrigingSample["y"]^2 
+    + Model$coefficients[12] * KrigingSample["x"]^2 * KrigingSample["y"]^2
+    + Model$coefficients[13] * KrigingSample["x"]^3 * KrigingSample["y"]^2 
+    + Model$coefficients[14] * KrigingSample["x"] * KrigingSample["y"]^3 
+    + Model$coefficients[15] * KrigingSample["x"]^2 * KrigingSample["y"]^3
+    + Model$coefficients[16] * KrigingSample["x"]^3 * KrigingSample["y"]^3)
+} else if (length(Model$coefficients) == 9) {
+  print("quadratic trend model")
+  VariogramSample["z"] <- VariogramSample["z"] - (Model$coefficients[1] 
+    + Model$coefficients[2] * VariogramSample["x"] 
+    + Model$coefficients[3] * VariogramSample["x"]^2
+    + Model$coefficients[4] * VariogramSample["y"] 
+    + Model$coefficients[5] * VariogramSample["y"]^2 
+    + Model$coefficients[6] * VariogramSample["x"]*VariogramSample["y"]
+    + Model$coefficients[7] * VariogramSample["x"]^2*VariogramSample["y"] 
+    + Model$coefficients[8] * VariogramSample["x"]*VariogramSample["y"]^2
+    + Model$coefficients[9] * VariogramSample["x"]^2*VariogramSample["y"]^2)
+  KrigingSample["z"] <- KrigingSample["z"] - (Model$coefficients[1] 
+    + Model$coefficients[2] * KrigingSample["x"] 
+    + Model$coefficients[3] * KrigingSample["x"]^2
+    + Model$coefficients[4] * KrigingSample["y"] 
+    + Model$coefficients[5] * KrigingSample["y"]^2 
+    + Model$coefficients[6] * KrigingSample["x"] * KrigingSample["y"]
+    + Model$coefficients[7] * KrigingSample["x"]^2 * KrigingSample["y"]
+    + Model$coefficients[8] * KrigingSample["x"] * KrigingSample["y"]^2 
+    + Model$coefficients[9] * KrigingSample["x"]^2 * KrigingSample["y"]^2)
+} else if (length(Model$coefficients) == 4) {
+  print("linear trend model")
+  VariogramSample["z"] <- VariogramSample["z"] - (Model$coefficients[1] 
+    + Model$coefficients[2] * VariogramSample["x"]
+    + Model$coefficients[3] * VariogramSample["y"] 
+    + Model$coefficients[4] * VariogramSample["x"] * VariogramSample["y"])
+  KrigingSample["z"] <- KrigingSample["z"] - (model$coefficients[1] 
+    + model$coefficients[2] * KrigingSample["x"]
+    + model$coefficients[3] * KrigingSample["y"]
+    + model$coefficients[4] * KrigingSample["x"] * KrigingSample["y"])
+} else {
+  print("Error while substracting the trend model")
+}
+# Plot of variables after removing the trend:
+png(paste(Directory, "/correlation_trend_removal.png", sep = ""))
+plot(VariogramSample)
+dev.off()
+
+########## VARIOGRAM ESTIMATION ###################################################################################################
+coordinates(VariogramSample) <- ~x + y
 # d <- data.frame(x,y,z)
 # coordinates(d) = ~x+y
-# g <- gstat(id = "test", formula = z_v~1,data = d_v)
-# v <- variogram(g, alpha = c(0,45,90,135),width = 10,cutoff = 10000000)
-# v2 <- variogram(g, width = 100,cutoff = 10000000)
-# # Plot of the variogram:
-# png(paste(dir,"variogram.png"))
-# plot(v2)
-# dev.off()
-# vm <- vgm(psill = max(v2$gamma)/2,"Sph",range = max(v2$dist)/3)# ,anis = c(45,0.3))
-# fit <- fit.variogram(v,vm)
-# #Plot of the fitted variogram function:
-# png(paste(dir,"variogram_fit.png"))
-# plot(v, fit)
-# dev.off()
-# rm(x_v,y_v,z_v,d_v,v,v2,g,v,v2,vm)
+G <- gstat(formula = z~x+y,data = VariogramSample)
+MeasuredVariogram <- variogram(G, width = 10, cutoff = 10000000)
+png(paste(Directory, "/variogram.png", sep = ""))
+plot(MeasuredVariogram)
+dev.off()
+EstimatedVariogram <- vgm(psill = max(MeasuredVariogram$gamma)/2, "Sph", range = max(MeasuredVariogram$dist)/3) # ,anis = c(45,0.3))
+FittedVariogram <- fit.variogram(MeasuredVariogram, EstimatedVariogram)
+#Plot of the fitted variogram function:
+png(paste(Directory, "/variogram_fit.png", sep = ""))
+plot(MeasuredVariogram, FittedVariogram)
+dev.off()
+rm(MeasuredVariogram, EstimatedVariogram, G, VariogramSample)
 
-# t3 <- Sys.time()
+########## KRIGING #############################################################################################################
+coordinates(KrigingSample) <- ~x+y
+kriging <- function(i){
+    if (unique(SearchedPoints$z)[i] < 25000) {max_kriging_points = 3000}else{max_kriging_points = 500}
+    ActualRadius <- unique(SearchedPoints$z)[i]
+    ActualPoints <- SearchedPoints[SearchedPoints$z == ActualRadius,]
+    coordinates(ActualPoints) <- ~x + y
+    KrigingValues <- krige(formula = z~1, locations = KrigingSample, newdata = ActualPoints, model = FittedVariogram, maxdist = ActualRadius, nmax = 1000)
+    ActualPoints@data$z <- KrigingValues@data$var1.pred
+    ActualPoints <- data.frame(ActualPoints)[,1:3]
+}
+print("number of cores:")
+NumberOfCores <- detectCores()
+print(NumberOfCores)
+Cluster <- makeCluster(NumberOfCores)
+registerDoParallel(Cluster)
+MaxGapLength <- length(SearchedPoints$z)/NumberOfCores
+NumberOfIterations <- length(unique(SearchedPoints$z))
+if (MaxGapLength > 1) {
+  # divide gaps with to many points in parts with a maximal length of all searched points divided by number of cores
+  for (j in unique(SearchedPoints$z)) {
+    if (length(SearchedPoints[SearchedPoints$z == j,]) > MaxGapLength) {
+      print("maxgaplength überschritten")
+      print(length(SearchedPoints[SearchedPoints$z == j,]))
+      print(MaxGapLength)
+      NumberOfParts <- MaxGapLength/length(SearchedPoints[SearchedPoints$z == j,])
+      NumberOfIterations <- NumberOfIterations + (NumberOfParts - 1)
+      print(NumberOfParts)
+      for (k in 1:floor(NumberOfParts)) {  
+        SearchedPoints[SearchedPoints$z == j,]$z[(k - 1) * MaxGapLength + 1:MaxGapLength] <- SearchedPoints[SearchedPoints$z == j,]$z[(k - 1) * MaxGapLength + 1:MaxGapLength] + k * 0.01
+      }
+    }
+  }
+}
+print("number of iterarions:")
+print(NumberOfIterations)
+KrigingResults <- foreach(Iteration = 1:NumberOfIterations,
+                           .combine = list,
+                           .multicombine = TRUE,
+                           .packages = c("gstat", "sp"))  %dopar%
+  kriging(Iteration)
 
-# ########## KRIGING #############################################################################################################
-# print("kriging")
-# x_notnan <- x_a[krig_a == 0 | (krig_a != 0 & !is.na(z_a))]
-# y_notnan <- y_a[krig_a == 0 | (krig_a != 0 & !is.na(z_a))]
-# z_notnan <- z_a[krig_a == 0 | (krig_a != 0 & !is.na(z_a))]
-# d_notnan <- data.frame(x_notnan,y_notnan,z_notnan)
-# d_notnan <- rename(d_notnan, c("x_notnan" = "x", "y_notnan" = "y","z_notnan" = "z"))
-# rm(x_notnan,y_notnan,z_notnan,x_a,y_a,z_a)
-# kriging <- function(i){
-    # print("kriging run")
-    # print(i)
-    # if (unique(krig_nan)[i] > 25000) {max_kriging_points = 3000}else{max_kriging_points = 500}
-    # x_nan_i <- x_nan[krig_nan == unique(krig_nan)[i]]
-    # y_nan_i <- y_nan[krig_nan == unique(krig_nan)[i]]
-    # d_n <- data.frame(x_nan_i,y_nan_i)
-    # coordinates(d_n) = ~x_nan_i+y_nan_i
-    # cat(i, 'of', n_iterations, " at time", as.character(Sys.time()), "for",length(x_nan_i),"points and with maximal", max_kriging_points, "kriging points \n")
-    # zk <- krige(formula = z~1, locations = d, newdata = d_n, model = fit, maxdist = 5*unique(krig_nan)[i], nmax=1000)
-    # #maxdist = unique(krig_nan)[i]
-    # zw <- zk$var1.pred
-    # xw <- x_nan_i
-    # yw <- y_nan_i
-    # dw <- data.frame(xw,yw,zw)
-    # dw <- rename(dw, c("xw"="x", "yw"="y", "zw"="z"))
-# }
-# print("number of cores:")
-# n_cores <- detectCores()
-# print(n_cores)
-# cl <- makeCluster(n_cores)
-# registerDoParallel(cl)
-# max_length_gap=length(krig_nan/n_cores)
-# for (j in unique(krig_nan))
-# {
-# if (length(krig_nan[krig_nan==j])>max_length_gap)
-   # {
-   # part=max_length_gap/length(krig_nan[krig_nan==j])
-   # for (k in 1:floor(part))
-       # {  
-		# krig_nan[krig_nan==j][(k-1)*max_length_gap+1:k*max_length_gap]=krig_nan[(k-1)*max_length_gap+1:k*max_length_gap]+k*0.01
-       # }
-   # }
-# } 
+stopImplicitCluster()
+rm(SearchedPoints)
+Result <- KrigingResults[[1]]
+for (i in 2:length(KrigingResults)) {
+  Result <- rbind(Result,KrigingResults[[i]])
+}
 
-# n_iterations <- length(unique(krig_nan))
-# print("number of iterarions:")
-# print(n_iterations)
-# kriging_results <- foreach(test_i = 1:n_iterations,
-                           # .combine = list,
-                            # .multicombine = TRUE,
-                            # .packages = c("gstat", "sp", "nlme", "ncdf4", "lattice", "plyr"))  %dopar%
-    # kriging(test_i)
+# Addition of substracted trend model:
+if (length(Model$coefficients) == 16){
+  Result$z <- Result$z + (Model$coefficients[1]
+    + Model$coefficients[2] * Result$x 
+    + Model$coefficients[3] * Result$x^2
+    + Model$coefficients[4] * Result$x^3 
+    + Model$coefficients[5] * Result$y 
+    + Model$coefficients[6] * Result$y^2
+    + Model$coefficients[7] * Result$y^3 
+    + Model$coefficients[8] * Result$x * Result$y 
+    + Model$coefficients[9] * Result$x^2 * Result$y
+    + Model$coefficients[10] * Result$x^3 * Result$y 
+    + Model$coefficients[11] * Result$x * Result$y^2 
+    + Model$coefficients[12] * Result$x^2 * Result$y^2
+    + Model$coefficients[13] * Result$x^3 * Result$y^2 
+    + Model$coefficients[14] * Result$x * Result$y^3 
+    + Model$coefficients[15] * Result$x^2 * Result$y^3
+    + Model$coefficients[16] * Result$x^3 * Result$y^3)
+} else if (length(Model$coefficients) == 9) {
+  Result$z <- Result$z + (Model$coefficients[1]
+    + Model$coefficients[2] * Result$x 
+    + Model$coefficients[3] * Result$x^2
+    + Model$coefficients[4] * Result$y 
+    + Model$coefficients[5] * Result$y^2 
+    + Model$coefficients[6] * Result$x * Result$y
+    + Model$coefficients[7] * Result$x^2 * Result$y 
+    + Model$coefficients[8] * Result$x * Result$y^2 
+    + Model$coefficients[9] * Result$x^2 * Result$y^2)
+} else if (length(Model$coefficients) == 4) {
+  Result$z <- Result$z + (Model$coefficients[1]
+    + Model$coefficients[2] * Result$x
+    + Model$coefficients[3] * Result$y
+    + Model$coefficients[4] * Result$x * Result$y)
+} else {
+ print("Error while addition of the model")
+}
 
-# stopImplicitCluster()
-# d_result <- kriging_results[[1]]
-# for (i in 2:length(kriging_results)) {
-    # d_result <- rbind(d_result,kriging_results[[i]])
-# }
-# z_n <- d_result$z
-# x_n <- d_result$x
-# y_n <- d_result$y
-# t4 <- Sys.time()
-# cat("Kriging runtime:", t4 - t3)
-# # Addition of substracted trend model:
-# if (length(model$coefficients) == 16)
-# {
-   # z_n <- z_n + (model$coefficients[1] + model$coefficients[2]*x_n + model$coefficients[3]*x_n^2
-             # + model$coefficients[4]*x_n^3 + model$coefficients[5]*y_n + model$coefficients[6]*y_n^2
-             # + model$coefficients[7]*y_n^3 + model$coefficients[8]*x_n*y_n + model$coefficients[9]*x_n^2*y_n
-             # + model$coefficients[10]*x_n^3*y_n + model$coefficients[11]*x_n*y_n^2 + model$coefficients[12]*x_n^2*y_n^2
-             # + model$coefficients[13]*x_n^3*y_n^2 + model$coefficients[14]*x_n*y_n^3 + model$coefficients[15]*x_n^2*y_n^3
-             # + model$coefficients[16]*x_n^3*y_n^3)
-# }else if (length(model$coefficients) == 9)
-# {
-  # z_n <- z_n + (model$coefficients[1] + model$coefficients[2]*x_n + model$coefficients[3]*x_n^2
-             # + model$coefficients[4]*y_n + model$coefficients[5]*y_n^2 + model$coefficients[6]*x_n*y_n
-             # + model$coefficients[7]*x_n^2*y_n + model$coefficients[8]*x_n*y_n^2 + model$coefficients[9]*x_n^2*y_n^2)
-# }else if (length(model$coefficients) == 4)
-# {
-   # z_n <- z_n + (model$coefficients[1] + model$coefficients[2]*x_n
-             # + model$coefficients[3]*y_n + model$coefficients[4]*x_n*y_n)
-# }else{
-   # print("Error while addition of the model")
-# }
-
-# ############# WRITE ##################################################################################################
-# print("writing")
-# # kriged values:
+############# WRITE ##################################################################################################
 # d_z_n <- data.frame(x_n,y_n,z_n)
 # d_z_n <- rename(d_z_n, c("x_n" = "x", "y_n" = "y", "z_n" = "z"))
-# total <- rbind(d_z_n,d_notnan)
-# total <- total[with(total, order(x, y)),]
-# z_new <- as.matrix(total[c("z")], nrow = length(x_coor), ncol = length(y_coor))
-# nc_data <- nc_open(fnewname, write = TRUE)
-# z_data <- ncvar_put(nc_data, varid = "z",vals = z_new)
-# nc_close(nc_data)
+Result <- rbind(Result, GivenPoints)
+coordinates(Result) <- ~ x + y
+gridded(Result) <- TRUE
+ResultRaster <- raster(Result)
+writeRaster(ResultRaster, filename = OutputFileName, format = "GTiff", overwrite = TRUE)
+
