@@ -74,11 +74,11 @@ def choose_prior(FileName, EPSG, Platform):
     elif Platform == "Ollie":
         # TODO: Add Ollie Pathes!
         if "vx" in FileName:
-            PriorNorth = ""
-            PriorSouth = ""
+            PriorNorth = "/work/ollie/cluettig/prior/prior_vx.tif"
+            PriorSouth = "/work/ollie/cluettig/prior/rignot_vx.tif"
         elif "vy" in FileName:
-            PriorNorth = ""
-            PriorSouth = ""
+            PriorNorth = "/work/ollie/cluettig/prior/prior_vy.tif"
+            PriorSouth = "/work/ollie/cluettig/prior/rignot_vy.tif"
         else:
             # TODO assertion
             print("FileName must include vx or vy!")
@@ -92,6 +92,7 @@ def choose_prior(FileName, EPSG, Platform):
     SRS = osr.SpatialReference()
     SRS.ImportFromWkt(DataSet.GetProjectionRef())
     EPSGPrior=SRS.GetAuthorityCode(None)
+    print(EPSG)
     #TODO: other EPSG codes possible
     if EPSGPrior == EPSG:
         PriorFile = PriorNorth
@@ -338,7 +339,8 @@ def extent(FileName):
 def main():
     print_time("Computation started")
     Platform = platform.platform()
-    # TODO: Add other platforms otherwise wrong platform results in 
+    print(platform.platform())
+    # unknown platform results in 
     #   ERROR 4: : No such file or directory
     #   Traceback (most recent call last):
     #   File "int.py", line 392, in <module>
@@ -352,8 +354,10 @@ def main():
         Platform = "Windows"
     elif Platform == "Darwin-17.2.0-x86_64-i386-64bit":
         Platform = "Mac"
-    else:
+    elif "Linux" in Platform:
         Platform = "Ollie"
+    else:
+        Platform = "unknown"
     InFile = sys.argv[1]
     OutFile = sys.argv[2]
     DirName = OutFile.rpartition("/")[0]
@@ -361,7 +365,7 @@ def main():
     BaseName = BaseName.rpartition(".")[0]
     Extent = extent(InFile)
     Extent = str(Extent[0])+" "+str(Extent[1])+" "+str(Extent[2])+" "+str(Extent[3])
-    # TODO: remove EPSG code 
+    # TODO: remove EPSG code # -t_srs EPSG:3413
     os.system("gdalwarp -q -overwrite -t_srs EPSG:3413 -dstnodata nan -tr 250 250 -te "+Extent+" "+InFile+" "+DirName+"/"+BaseName+"_input.tif")
     InFile = DirName+"/"+BaseName+"_input.tif"
     # TODO: InputProj4 not needed
@@ -393,7 +397,8 @@ def main():
         print(Out.decode())
     elif Platform == "Mac":
         os.system("./kriging_mac.R "+InFile+" "+RadiusFile+" "+OutFile+" "+DirName)
-
+    elif Platform == "Ollie":
+        os.system("srun ./kriging.R "+InFile+" "+RadiusFile+" "+OutFile+" "+DirName)
     else:
         print("Not ready for this system")
         #os.system("./kriging.R "+InFile+" "+RadiusFile+" "+OutFile+" "+DirName)
