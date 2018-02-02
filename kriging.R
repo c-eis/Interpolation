@@ -1,12 +1,11 @@
-#!/usr/bin/env Rscript
 rm(list = ls())
 check = "check"
-Library = "/home-nfs/ollie/cluettig/R/x86_64-redhat-linux-gnu-library/3.3"
-library("doParallel", lib.loc = Library)
-library("gstat", lib.loc = Library)
-library("sp", lib.loc = Library)
-library("rgdal", lib.loc = Library)
-library("raster", lib.loc = Library)
+Library = '/home-nfs/ollie/cluettig/R/x86_64-redhat-linux-gnu-library/3.4’
+library(doParallel, lib.loc = Library)
+library(gstat, lib.loc = Library)
+library(sp, lib.loc = Library)
+library(rgdal, lib.loc = Library)
+library(raster, lib.loc = Library)
 setwd("/work/ollie/cluettig/github/Interpolation/Python")
 source("fitmodel.R")
 

@@ -1,6 +1,6 @@
+from osgeo import gdal
 import sys
 from time import localtime, strftime
-from osgeo import gdal
 from osgeo import osr
 import numpy as np
 import os
@@ -45,7 +45,6 @@ def choose_prior(FileName, EPSG, Platform):
     str
         path of the prior field
     """
-    print(Platform)
     if Platform == "Windows":
         # TODO: correct files in directory, there are only dummy copies yet
         if "vx" in FileName:
@@ -339,7 +338,6 @@ def extent(FileName):
 def main():
     print_time("Computation started")
     Platform = platform.platform()
-    print(platform.platform())
     # unknown platform results in 
     #   ERROR 4: : No such file or directory
     #   Traceback (most recent call last):
@@ -366,7 +364,7 @@ def main():
     Extent = extent(InFile)
     Extent = str(Extent[0])+" "+str(Extent[1])+" "+str(Extent[2])+" "+str(Extent[3])
     # TODO: remove EPSG code # -t_srs EPSG:3413
-    os.system("gdalwarp -q -overwrite -t_srs EPSG:3413 -dstnodata nan -tr 250 250 -te "+Extent+" "+InFile+" "+DirName+"/"+BaseName+"_input.tif")
+    os.system("gdalwarp -overwrite -t_srs EPSG:3031 -dstnodata nan -tr 250 250 -te "+Extent+" "+InFile+" "+DirName+"/"+BaseName+"_input.tif")
     InFile = DirName+"/"+BaseName+"_input.tif"
     # TODO: InputProj4 not needed
     Input, InputGeoT, InputWKT, InputEPSG, InputProj4 = read(InFile, GetGeoT=True, GetWKT=True, GetEPSG=True, GetProj4=True)
@@ -383,7 +381,7 @@ def main():
     VecFile = DirName+"/vectorized"
     if not os.path.exists(VecFile):
         os.makedirs(VecFile)
-    os.system("gdal_polygonize.py -q "+IsnanFile+" "+VecFile+" -f \"ESRI Shapefile\" ")
+    os.system("./gdal_polygonize.py -q "+IsnanFile+" "+VecFile+" -f \"ESRI Shapefile\" ")
     print_time("Computation of kriging radii")
     RadiusSHPFile = DirName+"/kriging_radius"
     RadiusFile = DirName+"/kriging_radius.tif"
@@ -398,7 +396,11 @@ def main():
     elif Platform == "Mac":
         os.system("./kriging_mac.R "+InFile+" "+RadiusFile+" "+OutFile+" "+DirName)
     elif Platform == "Ollie":
-        os.system("srun ./kriging.R "+InFile+" "+RadiusFile+" "+OutFile+" "+DirName)
+        print("test")
+        os.system("gdal_translate -of XYZ "+InFile+" "+DirName+"/"+BaseName+"_input.xyz")
+        os.system("gdal_translate -of XYZ "+RadiusFile+" "+DirName+"/kriging_radius.xyz")
+        os.system("/usr/lib64/R/bin/Rscript kriging.R "+DirName+"/"+BaseName+"_input.xyz"+" "+DirName+"/kriging_radius.xyz"+" "+DirName+"/output.xyz"+" "+DirName)
+        os.system("gdal_translate "+DirName+"/output.xyz "+OutFile)
     else:
         print("Not ready for this system")
         #os.system("./kriging.R "+InFile+" "+RadiusFile+" "+OutFile+" "+DirName)
