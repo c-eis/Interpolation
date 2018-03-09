@@ -3,11 +3,11 @@
 ## Time-stamp: <2016-08-05 11:11:17 (cluettig)>
 ##    
 #SBATCH --job-name=interpolation
-#SBATCH -N 1
+#SBATCH -n 1
 #SBATCH --time=12:00:00
 #SBATCH --mail-user=cluettig@awi.de
 #SBATCH --mail-type=END
-
+#SBATCH --mem=10000M
 ulimit -s unlimited
 module purge
 module load gcc

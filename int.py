@@ -191,7 +191,24 @@ def add_edge(Array, Edge):
     Array[N, :] = Edge[N, :]
     Array[:, M] = Edge[:, M]
     return Array
+  
+  
+def combine(InputArray, PriorArray):
+    """
+    Add points of PriorArray to InpuArray if they are NaN there.
     
+    Parameter
+    ---------
+    InputArray  : 2d numpy array of the size mxn
+    PriorArray  : 2d numpy array of the size mxn
+    
+    Returns
+    -------
+    2d numpy array of the size mxn which contains data from InputArray and data 
+    from PriorArray at noData positions.
+    """
+    InputArray[np.isnan(InputArray)]=PriorArray[np.isnan(InputArray)]
+      
     
 # TODO: is this reasonable?:
 def minimal_diameter(Polygon):
@@ -234,9 +251,8 @@ def maximal_diameter(Polygon):
         rough diameter of the polygon  
     '''
     [MinX, MinY, MaxX, MaxY] = Polygon.bounds
-    LineY = LineString([(MinX, MinY), (MaxX, MinY)])
-    LineX = LineString([(MinX, MinY), (MinX, MaxY)])
-    return max(LineY.length,LineX.length)
+    Line = LineString([(MinX, MinY), (MaxX, MaxY)])
+    return Line.length
 
  
 # TODO: is this reasonable?: 
@@ -258,7 +274,7 @@ def properties(Polygon):
     '''
     A = Polygon.area
     Perimeter = Polygon.length
-    Diameter = minimal_diameter(Polygon)
+    Diameter = maximal_diameter(Polygon)
     return [A, Perimeter, Diameter]
 
     
@@ -287,7 +303,7 @@ def classification(OldFileName, NewFileName):
             i = i + 1
     Properties = np.divide(Properties, np.absolute(Properties).max(0)) 
         # scaling property values
-    NumClusters = 150
+    NumClusters = 40
     if NumClusters > NumPolygons:
         NumClusters = NumPolygons
     Cluster = KMeans(n_clusters=NumClusters)
@@ -356,24 +372,31 @@ def main():
         Platform = "Ollie"
     else:
         Platform = "unknown"
+    Resolution = 250
     InFile = sys.argv[1]
     OutFile = sys.argv[2]
     DirName = OutFile.rpartition("/")[0]
     BaseName = InFile.rpartition("/")[2]
     BaseName = BaseName.rpartition(".")[0]
-    Extent = extent(InFile)
+    PriorFile=DirName+"/rignot_vx_rand.tif"
+    os.system("gdalwarp -q -overwrite -dstnodata nan -tr "+str(Resolution)+" "+str(Resolution)+" "+DirName+"/prior.tif")
+    PriorFile=DirName+"/prior.tif"
+    Extent = extent(PriorFile)
     Extent = str(Extent[0])+" "+str(Extent[1])+" "+str(Extent[2])+" "+str(Extent[3])
     # TODO: remove EPSG code # -t_srs EPSG:3413
-    os.system("gdalwarp -overwrite -t_srs EPSG:3031 -dstnodata nan -tr 250 250 -te "+Extent+" "+InFile+" "+DirName+"/"+BaseName+"_input.tif")
+    os.system("gdalwarp -overwrite -t_srs EPSG:3031 -dstnodata nan -tr "+str(Resolution)+" "+str(Resolution)+" -te "+Extent+" "+InFile+" "+DirName+"/"+BaseName+"_input.tif")
     InFile = DirName+"/"+BaseName+"_input.tif"
     # TODO: InputProj4 not needed
     Input, InputGeoT, InputWKT, InputEPSG, InputProj4 = read(InFile, GetGeoT=True, GetWKT=True, GetEPSG=True, GetProj4=True)
-    PriorFile = choose_prior(InFile, InputEPSG, Platform)
-    os.system("gdalwarp -q -overwrite -dstnodata nan -tr 250 250 -te "+Extent+" "+PriorFile+" "+DirName+"/prior.tif")
+    #PriorFile = choose_prior(InFile, InputEPSG, Platform)
+    #os.system("gdalwarp -q -overwrite -dstnodata nan -tr "+str(Resolution)+" "+str(Resolution)+" -te "+Extent+" "+PriorFile+" "+DirName+"/prior.tif")
     PriorFile=DirName+"/prior.tif"
     Prior = read(PriorFile)[0]
-    print_time("Add edges")
-    Input = add_edge(Input, Prior)
+    Input = combine(Input, Prior)
+    #print_time("Add edges")
+    #Input = add_edge(Input, Prior)
+    #print(Input[0,0])
+    #write(Input, InFile, InputGeoT, InputWKT)
     print_time("Vectorization")
     Isnan = np.isnan(Input)
     IsnanFile = DirName+"/isnan.tif"
@@ -386,7 +409,7 @@ def main():
     RadiusSHPFile = DirName+"/kriging_radius"
     RadiusFile = DirName+"/kriging_radius.tif"
     classification(VecFile, RadiusSHPFile)
-    os.system("gdal_rasterize -q -a KrigRad -l kriging_radius -a_srs EPSG:"+InputEPSG+" -tr 250 250 -te "+Extent+" "+RadiusSHPFile+"/kriging_radius.shp "+RadiusFile)
+    os.system("gdal_rasterize -q -a KrigRad -l kriging_radius -a_srs EPSG:"+InputEPSG+" -tr "+str(Resolution)+" "+str(Resolution)+" -te "+Extent+" "+RadiusSHPFile+"/kriging_radius.shp "+RadiusFile)
     print_time("Start Kriging")
     #TODO: Add kriging command for other systems
     if Platform == "Windows":
@@ -396,11 +419,7 @@ def main():
     elif Platform == "Mac":
         os.system("./kriging_mac.R "+InFile+" "+RadiusFile+" "+OutFile+" "+DirName)
     elif Platform == "Ollie":
-        print("test")
-        os.system("gdal_translate -of XYZ "+InFile+" "+DirName+"/"+BaseName+"_input.xyz")
-        os.system("gdal_translate -of XYZ "+RadiusFile+" "+DirName+"/kriging_radius.xyz")
-        os.system("/usr/lib64/R/bin/Rscript kriging.R "+DirName+"/"+BaseName+"_input.xyz"+" "+DirName+"/kriging_radius.xyz"+" "+DirName+"/output.xyz"+" "+DirName)
-        os.system("gdal_translate "+DirName+"/output.xyz "+OutFile)
+        os.system("Rscript kriging.R "+DirName+"/"+BaseName+"_input.tif"+" "+DirName+"/kriging_radius.tif"+" "+DirName+"/output.tif"+" "+DirName)
     else:
         print("Not ready for this system")
         #os.system("./kriging.R "+InFile+" "+RadiusFile+" "+OutFile+" "+DirName)
